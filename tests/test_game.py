@@ -35,7 +35,8 @@ def battle(room):
     prepare(room)
     for number in range(1, 6):
         for actor in ["a", "b"]:
-            apply(room, actor, "place_ship", ship=number, column=24 if actor == "a" else 12, ring="B", direction=1)
+            column = (number + 22) % 24 + 1 if actor == "a" else number + 11
+            apply(room, actor, "place_ship", ship=number, column=column, ring="B", direction=1)
     room.game["battle_starts_at"] = room.game["busy_until"] = 0
 
 
@@ -96,6 +97,18 @@ def test_placement_is_alternating_and_no_early_battle(room):
     with pytest.raises(game.RuleError):
         apply(room, "a", "place_ship", ship=2, column=1, ring="A", direction=-1)
     assert room.game["phase"] == "placement" and room.game["logs"] == []
+
+
+def test_occupied_deployment_rejected_without_consuming_turn(room):
+    prepare(room)
+    apply(room, "a", "place_ship", ship=1, column=1, ring="A", direction=1)
+    with pytest.raises(game.RuleError, match="该格已有舰船"):
+        apply(room, "b", "place_ship", ship=1, column=1, ring="A", direction=1)
+    assert game.public_state(room, "b")["current_player"] == "b"
+    assert room.game["crews"]["b"]["ships"][0]["ring"] is None
+    apply(room, "b", "place_ship", ship=1, column=1, ring="B", direction=1)
+    with pytest.raises(game.RuleError, match="该格已有舰船"):
+        apply(room, "a", "place_ship", ship=2, column=1, ring="A", direction=1)
 
 
 def test_acceleration_wrap_passive_deceleration_and_rounds(room):
@@ -176,7 +189,8 @@ def test_four_player_deployment_and_private_views(room):
     for number in range(1, 6):
         for actor in "abcd":
             assert room.game["order"][room.game["turn_index"]] == actor
-            apply(room, actor, "place_ship", ship=number, column=number, ring="B", direction=-1)
+            apply(room, actor, "place_ship", ship=number, column=(number - 1) * 4 + "abcd".index(actor) + 1,
+                  ring="B", direction=-1)
     assert room.game["phase"] == "battle"
     for viewer in "abcd":
         state = game.public_state(room, viewer)

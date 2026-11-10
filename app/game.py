@@ -142,6 +142,9 @@ def apply(room, player_id, message):
         require(ship["ring"] is None, "该舰船已经部署。")
         ring, column, direction = message.get("ring"), message.get("column"), message.get("direction")
         require(ring in ("A", "B", "C") and integer(column, 1, 24) and type(direction) is int and direction in (-1, 1), "无效的部署位置或朝向。")
+        require(not any(s["ring"] == ring and s["column"] == column
+                        for fleet in game["crews"].values() for s in fleet["ships"]),
+                "该格已有舰船，请选择空格。")
         ship.update(ring=ring, column=column, direction=direction)
         if all(s["ring"] is not None for c in game["crews"].values() for s in c["ships"]):
             game["phase"] = "battle"

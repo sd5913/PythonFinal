@@ -5,6 +5,11 @@ const GameUI = (() => {
   let room = null, game = null, me = null, emit = null, selected = null, mode = "selected";
   let draft = null, targetGear = null, roleDraft = ["", "", "", "", ""], timer = null;
   let lastPhase = null, lastTurn = null, toastUntil = 0, pendingKey = "";
+  let placementNotice = "", logExpanded = false;
+  const intel = new Map(), motions = new Map();
+  const intelType = "application/x-dark-campaign-intel";
+  const intelShapes = {ship: "舰船", radar: "雷达"};
+  const intelColors = {blue: "推测", yellow: "确认"};
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -35,6 +40,8 @@ const GameUI = (() => {
   function reset() {
     clearTimeout(timer); selected = null; draft = null; targetGear = null; mode = "selected";
     roleDraft = ["", "", "", "", ""]; lastPhase = null; lastTurn = null; pendingKey = "";
+    placementNotice = ""; logExpanded = false; toastUntil = 0;
+    intel.clear(); motions.clear();
     root().replaceChildren();
   }
   function myself() { return game.crews.find((c) => c.id === me); }
@@ -80,14 +87,26 @@ const GameUI = (() => {
   }
   function point(column, radius, offset = 0) {
     const angle = ((column - .5) * 15 - 90 + offset) * Math.PI / 180;
-    return {x: 400 + Math.cos(angle) * radius, y: 400 + Math.sin(angle) * radius};
+    return {x: 813 + Math.cos(angle) * radius, y: 767 + Math.sin(angle) * radius};
   }
-  const radii = {A: [248, 330], B: [160, 242], C: [72, 154]};
-  function locationOf(ship) { return point(ship.column, (radii[ship.ring][0] + radii[ship.ring][1]) / 2); }
+  // Match the four concentric boundaries in the supplied map artwork.
+  const radii = {A: [339, 452], B: [452, 565], C: [565, 677]};
+  const ringCenter = (ring) => (radii[ring][0] + radii[ring][1]) / 2;
+  function locationOf(ship) { return point(ship.column, ringCenter(ship.ring)); }
+  function occupied(column, ring) {
+    return game.crews.some((crew) => crew.ships.some((ship) => ship.column === column && ship.ring === ring));
+  }
   function chooseCell(column, ring) {
     if (!canAct()) return;
     if (game.phase === "placement" && selected && !myShip().ring) {
-      draft = {column, ring, direction: 1}; draw();
+      if (occupied(column, ring)) {
+        draft = null; selected = null;
+        placementNotice = "该格已有舰船，请重新摆放。";
+      } else {
+        placementNotice = "";
+        draft = {column, ring, direction: 1};
+      }
+      draw();
     } else if (game.phase === "battle" && mode === "shift") {
       const ship = myShip();
       if (column === ship.column && Math.abs("ABC".indexOf(ring) - "ABC".indexOf(ship.ring)) === 1) {
@@ -95,38 +114,89 @@ const GameUI = (() => {
       }
     }
   }
+  function pose(motion, time) {
+    const progress = Math.max(0, Math.min(1, (time - motion.start) / motion.duration));
+    const eased = progress * progress * (3 - 2 * progress);
+    return {
+      column: motion.column + motion.columns * eased,
+      radius: motion.radius + (motion.endRadius - motion.radius) * eased,
+      finished: progress === 1,
+    };
+  }
+  function trackMotions(previous, next) {
+    if (previous?.phase !== "battle" || next?.phase !== "battle") return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const now = performance.now();
+    for (const crew of next.crews) {
+      const oldCrew = previous.crews.find((item) => item.id === crew.id);
+      for (const ship of crew.ships) {
+        const old = oldCrew?.ships.find((item) => item.number === ship.number);
+        if (!old || (old.column === ship.column && old.ring === ship.ring)) continue;
+        const key = crew.id + ":" + ship.number;
+        const running = motions.get(key);
+        const from = running ? pose(running, now) : {column: old.column, radius: ringCenter(old.ring)};
+        // The largest legal angular movement is three sectors. Unwrap across 24/1.
+        const columns = ((ship.column - from.column + 36) % 24) - 12;
+        motions.set(key, {
+          column: from.column, columns, radius: from.radius, endRadius: ringCenter(ship.ring),
+          start: now, duration: Math.min(720, 260 + Math.abs(columns) * 150),
+        });
+      }
+    }
+  }
+  function animateShip(token, heading, ship, key, offsetX, offsetY) {
+    const motion = motions.get(key);
+    if (!motion) return;
+    function frame(time) {
+      const currentPose = pose(motion, time);
+      if (currentPose.finished && motions.get(key) === motion) motions.delete(key);
+      const pos = point(currentPose.column, currentPose.radius);
+      token.setAttribute("transform", `translate(${pos.x + offsetX},${pos.y + offsetY})`);
+      heading.setAttribute("transform", `rotate(${(currentPose.column - .5) * 15 + (ship.direction === 1 ? 90 : -90)})`);
+      if (!currentPose.finished) requestAnimationFrame((nextTime) => {
+        if (token.isConnected) frame(nextTime);
+      });
+    }
+    frame(performance.now());
+  }
   function board() {
     const container = el("div", "board-canvas");
     container.classList.toggle("shifting", mode === "shift");
-    const map = svg("svg", {viewBox: "0 0 800 800", "aria-label": "24列三圈棋盘", role: "group"});
+    container.classList.toggle("placing", game.phase === "placement");
+    const map = svg("svg", {viewBox: "0 0 1625 1536", "aria-label": "24列三圈棋盘", role: "group"});
+    map.append(svg("image", {href: "/static/assets/player-map.png", width: 1625, height: 1536, preserveAspectRatio: "none", class: "map-art"}));
     for (const ring of "ABC") {
       const [inner, outer] = radii[ring];
       for (let col = 1; col <= 24; col++) {
         const start = col - 1, end = col;
-        const a = point(start + .5, outer, .35), b = point(end + .5, outer, -.35);
-        const c = point(end + .5, inner, -.35), d = point(start + .5, inner, .35);
+        const a = point(start + .5, outer), b = point(end + .5, outer);
+        const c = point(end + .5, inner), d = point(start + .5, inner);
         const path = svg("path", {d: `M${a.x} ${a.y} A${outer} ${outer} 0 0 1 ${b.x} ${b.y} L${c.x} ${c.y} A${inner} ${inner} 0 0 0 ${d.x} ${d.y}Z`,
           class: "map-cell", id: `cell-${col}-${ring}`, role: "button", tabindex: "0", "aria-label": `${col}${ring}`});
+        path.append(svg("title", {}));
+        path.firstChild.textContent = col + ring;
+        if (game.phase === "placement" && occupied(col, ring)) path.classList.add("occupied-cell");
         if (mode === "shift" && myShip()) {
           const active = col === myShip().column && Math.abs("ABC".indexOf(ring) - "ABC".indexOf(myShip().ring)) === 1;
           path.classList.add(active ? "shift-target" : "dim-cell");
         }
         path.onclick = () => chooseCell(col, ring);
         path.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); chooseCell(col, ring); } };
-        path.ondragover = (e) => { if (game.phase === "placement" && canAct()) e.preventDefault(); };
+        path.ondragover = (e) => {
+          if (game.phase === "placement" && canAct() && e.dataTransfer.types.includes("application/x-dark-campaign-deploy")) {
+            e.preventDefault(); e.dataTransfer.dropEffect = "move"; path.classList.add("drag-over");
+          }
+        };
+        path.ondragleave = () => path.classList.remove("drag-over");
         path.ondrop = (e) => {
           e.preventDefault();
-          const number = Number(e.dataTransfer.getData("text/plain"));
+          path.classList.remove("drag-over");
+          const number = Number(e.dataTransfer.getData("application/x-dark-campaign-deploy"));
           if (myself().ships.some((s) => s.number === number && !s.ring)) { selected = number; chooseCell(col, ring); }
         };
         map.append(path);
-        const mid = point(col, (inner + outer) / 2);
-        const label = svg("text", {x: mid.x, y: mid.y + 4, class: "cell-label", "text-anchor": "middle"}); label.textContent = col + ring; map.append(label);
       }
     }
-    map.append(svg("circle", {cx: 400, cy: 400, r: 57, class: "map-core"}));
-    const core = svg("text", {x: 400, y: 398, "text-anchor": "middle", class: "map-core-label"}); core.textContent = "DARK"; map.append(core);
-    const core2 = svg("text", {x: 400, y: 416, "text-anchor": "middle", class: "map-core-label"}); core2.textContent = "CAMPAIGN"; map.append(core2);
     const occupancy = {};
     for (const crew of game.crews) for (const ship of crew.ships) {
       if (!ship.ring) continue;
@@ -134,18 +204,21 @@ const GameUI = (() => {
     }
     for (const group of Object.values(occupancy)) group.forEach(({crew, ship}, index) => {
       const pos = locationOf(ship);
+      let offsetX = 0, offsetY = 0;
       // Keep overlapping tokens separately selectable, without changing their cells.
       if (group.length > 1) {
-        pos.x += Math.cos(index * 2 * Math.PI / group.length) * Math.min(24, group.length * 5);
-        pos.y += Math.sin(index * 2 * Math.PI / group.length) * Math.min(24, group.length * 5);
+        offsetX = Math.cos(index * 2 * Math.PI / group.length) * Math.min(46, group.length * 11);
+        offsetY = Math.sin(index * 2 * Math.PI / group.length) * Math.min(46, group.length * 11);
       }
-      const token = svg("g", {transform: `translate(${pos.x},${pos.y})`, class: "board-ship" + (selected === ship.number && crew.id === me ? " selected-ship" : ""), role: "button", tabindex: "0", "data-gear": ship.gear,
+      const token = svg("g", {transform: `translate(${pos.x + offsetX},${pos.y + offsetY})`, class: "board-ship" + (selected === ship.number && crew.id === me ? " selected-ship" : ""), role: "button", tabindex: game.phase === "battle" ? "0" : "-1", "data-gear": ship.gear,
         "aria-label": `${crew.name} ${ship.number}号舰船 ${ship.column}${ship.ring} ${ship.gear}档`});
       const degrees = (ship.column - .5) * 15 + (ship.direction === 1 ? 90 : -90);
-      token.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -13, y: -17, width: 26, height: 34, transform: `rotate(${degrees})`}));
-      if (ship.gear > 0) token.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -12, y: 12, width: 24, height: 5, transform: `rotate(${degrees})`, class: "gear-marker", "aria-label": ship.gear + "档"}));
-      token.append(svg("path", {d: "M-5 -22 0 -29 5 -22Z", fill: color(crew), transform: `rotate(${degrees})`}));
-      const num = svg("text", {x: 0, y: 27, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number + " / " + ship.gear; token.append(num);
+      const heading = svg("g", {transform: `rotate(${degrees})`});
+      heading.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -25, y: -32, width: 50, height: 64}));
+      if (ship.gear > 0) heading.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -22, y: 27, width: 44, height: 10, class: "gear-marker", "aria-label": ship.gear + "档"}));
+      heading.append(svg("path", {d: "M-9 -40 0 -52 9 -40Z", fill: color(crew)}));
+      const num = svg("text", {x: 0, y: 54, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number + " / " + ship.gear;
+      token.append(heading, num);
       const select = () => {
         if (crew.id !== me || !canAct() || game.phase !== "battle" || mode === "shift") return;
         selected = ship.number; mode = "selected"; targetGear = null; draw();
@@ -153,29 +226,29 @@ const GameUI = (() => {
       token.onclick = (e) => { e.stopPropagation(); select(); };
       token.onkeydown = (e) => { if (e.key === "Enter") select(); };
       map.append(token);
+      animateShip(token, heading, ship, crew.id + ":" + ship.number, offsetX, offsetY);
     });
     if (draft && game.phase === "placement") {
       const pos = locationOf(draft);
       const ghost = svg("g", {transform: `translate(${pos.x},${pos.y})`, class: "deployment-ghost"});
-      ghost.append(svg("circle", {r: 24}));
-      ghost.append(svg("path", {d: "M0 -15 10 11 0 6 -10 11Z", fill: color(myself()), transform: `rotate(${(draft.column - .5) * 15 + (draft.direction === 1 ? 90 : -90)})`})); map.append(ghost);
+      ghost.append(svg("circle", {r: 44}));
+      ghost.append(svg("image", {href: `/static/assets/${myself().fleet}-${selected}.png`, x: -25, y: -32, width: 50, height: 64,
+        transform: `rotate(${(draft.column - .5) * 15 + (draft.direction === 1 ? 90 : -90)})`}));
+      map.append(ghost);
     }
     container.append(map);
-    if ((draft && game.phase === "placement") || (selected && game.phase === "battle" && canAct())) container.append(shipMenu());
     return container;
   }
   function shipMenu() {
     const menu = el("div", "ship-menu");
     const ship = myShip();
-    const pos = locationOf(draft || ship);
-    menu.style.left = Math.min(69, Math.max(3, pos.x / 8 + 3)) + "%";
-    menu.style.top = Math.min(70, Math.max(3, pos.y / 8 - 5)) + "%";
-    menu.append(el("strong", "", selected + "号舰船"));
+    const cell = draft || ship;
+    menu.append(el("strong", "", `${selected}号舰船 · ${cell.column}${cell.ring}`));
     if (game.phase === "placement") {
       menu.append(el("span", "hint", draft.column + draft.ring + " · " + (draft.direction === 1 ? "顺时针" : "逆时针")),
         button("确认部署", () => { command({type: "place_ship", ship: selected, ...draft}); draft = null; selected = null; }),
         button("转向", () => { draft.direction *= -1; draw(); }),
-        button("取消", () => { draft = null; draw(); }));
+        button("取消", () => { draft = null; selected = null; draw(); }));
       return menu;
     }
     const locked = game.move_ship !== null && game.move_ship !== selected;
@@ -197,42 +270,205 @@ const GameUI = (() => {
     }
     return menu;
   }
-  function playerConsole() {
-    const panel = el("div", "player-console");
-    const heading = el("div", "console-heading");
-    heading.append(el("h3", "", game.fleets[myself().fleet].name + " · " + myself().name),
-      button("结束回合", () => { selected = null; mode = "selected"; targetGear = null; command({type: "end_turn"}); }, game.phase !== "battle" || !canAct(), "end-turn"));
-    panel.append(heading);
-    const summary = el("div", "ship-summary");
-    for (const ship of myself().ships) {
-      const item = el("div", "summary-ship");
-      const picture = el("span", "ship-card-image"); picture.append(shipImage(myself().fleet, ship.number));
-      if (ship.gear > 0) { const marker = el("img", "card-gear-marker"); marker.src = `/static/assets/gear-${ship.gear}.png`; marker.alt = ship.gear + "档"; picture.append(marker); }
-      item.append(picture, el("span", "", ship.number + "号 · " + labels[ship.role])); summary.append(item);
+  function intelToken(shape, color) {
+    const image = el("img", "intel-token");
+    image.src = `/static/assets/intel-${shape}-${color}.png`;
+    image.alt = `${intelShapes[shape]} · ${intelColors[color]}`;
+    return image;
+  }
+  function intelPalette() {
+    const palette = el("section", "intel-palette");
+    palette.append(el("h4", "", "情报标记"));
+    const groups = el("div", "intel-groups");
+    for (const shape of Object.keys(intelShapes)) {
+      const group = el("div", "intel-group");
+      group.setAttribute("aria-label", intelShapes[shape]);
+      for (const color of Object.keys(intelColors)) {
+        const image = intelToken(shape, color);
+        image.title = image.alt + " · 拖动放置";
+        image.draggable = true;
+        image.ondragstart = (event) => {
+          if (!canAct()) { event.preventDefault(); return; }
+          event.dataTransfer.setData(intelType, shape + ":" + color);
+          event.dataTransfer.effectAllowed = "copy";
+        };
+        group.append(image);
+      }
+      groups.append(group);
     }
-    panel.append(summary);
-    const status = el("div", "console-status");
+    palette.append(groups, el("p", "", "蓝色 · 推测　黄色 · 确认"));
+    return palette;
+  }
+  function intelCell(fleet, number) {
+    const key = fleet + ":" + number;
+    const cell = el("td", "intel-cell");
+    const markers = el("div", "intel-cell-markers");
+    cell.append(markers);
+    function showMarkers() {
+      markers.replaceChildren();
+      for (const value of intel.get(key) || []) {
+        const [shape, color] = value.split(":");
+        const image = intelToken(shape, color);
+        image.draggable = false;
+        image.title = image.alt + " · 右键消除";
+        image.oncontextmenu = (event) => {
+          event.preventDefault();
+          if (!canAct()) return;
+          intel.get(key).delete(value);
+          showMarkers();
+        };
+        markers.append(image);
+      }
+    }
+    cell.ondragover = (event) => {
+      if (!canAct() || !event.dataTransfer.types.includes(intelType)) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "copy";
+      cell.classList.add("drag-over");
+    };
+    cell.ondragleave = (event) => {
+      if (!cell.contains(event.relatedTarget)) cell.classList.remove("drag-over");
+    };
+    cell.ondrop = (event) => {
+      cell.classList.remove("drag-over");
+      if (!canAct()) return;
+      event.preventDefault();
+      const value = event.dataTransfer.getData(intelType);
+      const [shape, color] = value.split(":");
+      if (!Object.hasOwn(intelShapes, shape) || !Object.hasOwn(intelColors, color)) return;
+      if (!intel.has(key)) intel.set(key, new Set());
+      intel.get(key).add(value);
+      showMarkers();
+    };
+    showMarkers();
+    return cell;
+  }
+  function intelTable() {
+    const table = el("table", "intel-table");
+    table.setAttribute("aria-label", "舰船状态记录");
+    const headings = table.createTHead().insertRow();
+    headings.append(el("th", "", ""));
+    for (let number = 1; number <= 5; number++) {
+      const heading = el("th", "", "No." + number);
+      heading.scope = "col";
+      headings.append(heading);
+    }
+    const rows = table.createTBody();
+    for (const fleet of ["blue", "red", "gray", "yellow"]) {
+      const row = rows.insertRow();
+      const badge = el("th", "fleet-badge");
+      badge.scope = "row"; badge.title = game.fleets[fleet].name;
+      badge.style.setProperty("--fleet", game.fleets[fleet].color);
+      const icon = shipImage(fleet, 1);
+      icon.alt = badge.title;
+      badge.append(icon); row.append(badge);
+      for (let number = 1; number <= 5; number++) row.append(intelCell(fleet, number));
+    }
+    return table;
+  }
+  function energyPanel() {
+    const panel = el("section", "energy-panel");
+    const remaining = myself().energy;
+    const heading = el("h4", "energy-heading", "剩余能量");
+    heading.append(el("span", "energy-count", String(remaining)));
     const energy = el("div", "energy-bank"); energy.setAttribute("aria-label", "公共能量 " + myself().energy);
-    const cost = mode === "shift" ? 1 : mode === "confirm" && myShip() ? Math.abs(targetGear - myShip().gear) : 0;
-    for (let i = 0; i < 12; i++) energy.append(el("span", "energy-block" + (i >= myself().energy ? " spent" : "") + (i < myself().energy && i >= myself().energy - cost ? " flashing" : "")));
-    const energyLabel = el("div", "energy-label"); energyLabel.append(el("span", "eyebrow", "共享能量 " + myself().energy + " / 12"), energy);
+    const cost = mode === "shift" ? 1 : mode === "confirm" ? Math.abs(targetGear - myShip().gear) : 0;
+    for (let i = 0; i < 12; i++) {
+      const state = i >= remaining ? " spent" : i >= remaining - cost ? " flashing" : "";
+      energy.append(el("span", "energy-block" + state));
+    }
+    panel.append(heading, energy);
+    return panel;
+  }
+  function playerConsole() {
+    const panel = el("aside", "player-console");
+    const body = el("div", "console-body");
+    const heading = el("h3", "console-title", "舰队控制台");
+    heading.title = game.fleets[myself().fleet].name + " · " + myself().name;
     const indicators = el("div", "action-indicators");
-    indicators.append(el("span", game.phase === "battle" && canAct() && !game.gear_used ? "lit" : "", "● 移动"), el("span", "", "● 战术"));
-    status.append(energyLabel, indicators); panel.append(status);
+    const movement = game.phase === "battle" && canAct() && !game.gear_used;
+    for (const [label, available] of [["移动", movement], ["战术", false]]) {
+      const indicator = el("div", "action-indicator" + (available ? " lit" : ""));
+      indicator.append(el("span", "", label), el("span", "indicator-state", available ? "可用" : "已用"));
+      indicators.append(indicator);
+    }
+    const summary = el("div", "ship-summary");
+    for (let number = 1; number <= 5; number++) {
+      const ship = myself().ships[number - 1];
+      const item = el("div", "summary-ship");
+      const role = el("div", "summary-role", labels[ship?.role] || "—");
+      if (ship?.gear > 0) {
+        const marker = el("img", "card-gear-marker");
+        marker.src = `/static/assets/gear-${ship.gear}.png`; marker.alt = ship.gear + "档";
+        role.append(marker);
+      }
+      item.append(el("span", "", "No." + number), role); summary.append(item);
+    }
+    body.append(heading, indicators, el("h4", "console-label", "己方舰种"), summary);
+    const resources = el("div", "console-resources");
+    const orders = el("div", "console-orders");
+    orders.append(intelPalette(), button("结束回合", () => {
+      selected = null; mode = "selected"; targetGear = null; command({type: "end_turn"});
+    }, game.phase !== "battle" || !canAct(), "end-turn"));
+    resources.append(energyPanel(), orders);
     if (game.phase === "placement") {
       const tray = el("div", "ship-tray");
       for (const ship of myself().ships.filter((s) => !s.ring)) {
-        const token = button("", () => { selected = ship.number; draft = null; draw(); }, !canAct(), selected === ship.number ? "tray-ship active" : "tray-ship secondary");
+        const token = button("", () => { selected = ship.number; draft = null; placementNotice = ""; draw(); }, !canAct(), selected === ship.number ? "tray-ship active" : "tray-ship secondary");
         token.setAttribute("aria-label", "部署" + ship.number + "号舰船");
         token.append(shipImage(myself().fleet, ship.number), el("span", "", ship.number + "号"));
         token.draggable = canAct(); token.style.setProperty("--fleet", color(myself()));
-        token.ondragstart = (e) => { selected = ship.number; draft = null; e.dataTransfer.setData("text/plain", String(ship.number)); };
+        token.ondragstart = (e) => {
+          e.dataTransfer.setData("application/x-dark-campaign-deploy", String(ship.number));
+          e.dataTransfer.effectAllowed = "move";
+        };
         tray.append(token);
       }
-      panel.append(tray, el("p", "hint", selected ? "将舰船拖到格子，或点击棋盘格，再确认朝向。" : "拖拽或点选一艘舰船，开始部署。"));
+      body.append(el("h4", "console-label", "待部署舰船"), tray);
     }
-    if ((game.phase === "placement" || game.phase === "battle") && (!canAct())) panel.append(el("div", "console-lock", busy() ? "正在处理被动移动，请稍候" : "等待 " + captain(current())));
+    body.append(el("h4", "console-label", "舰船状态记录"), intelTable(), resources);
+    if (["placement", "battle"].includes(game.phase) && !canAct()) {
+      body.inert = true;
+      panel.append(el("div", "console-lock", busy() ? "正在处理被动移动，请稍候" : "等待 " + captain(current())));
+    }
+    panel.prepend(body);
+    const logSlot = el("div", "battle-log-slot");
+    logSlot.append(battleLog());
+    panel.append(logSlot);
     return panel;
+  }
+  function setLogExpanded(log, expanded) {
+    logExpanded = expanded;
+    log.classList.toggle("expanded", expanded);
+    log.querySelector(".log-toggle").setAttribute("aria-expanded", String(expanded));
+    const entries = log.querySelector(".battle-log-entries");
+    entries.tabIndex = expanded ? 0 : -1;
+    if (!expanded || entries.scrollTop === 0) entries.scrollTop = entries.scrollHeight;
+  }
+  document.addEventListener("click", (event) => {
+    const log = root().querySelector(".battle-log.expanded");
+    if (log && !log.contains(event.target)) setLogExpanded(log, false);
+  }, true);
+  function battleLog() {
+    const log = el("section", "battle-log");
+    const toggle = button("回合记录", () => setLogExpanded(log, !logExpanded), false, "log-toggle");
+    toggle.setAttribute("aria-label", "回合记录");
+    toggle.setAttribute("aria-controls", "battle-log-entries");
+    const entries = el("div", "battle-log-entries");
+    entries.id = "battle-log-entries";
+    entries.setAttribute("aria-label", "本局回合记录");
+    let round = 0;
+    for (const entry of game.logs) {
+      if (entry.round !== round) {
+        round = entry.round;
+        entries.append(el("h4", "", "第 " + round + " 轮"));
+      }
+      entries.append(el("p", "log-" + entry.kind, entry.text));
+    }
+    if (!game.logs.length) entries.append(el("p", "hint", "全员放置完毕后开始记录"));
+    entries.onclick = () => { if (!logExpanded) setLogExpanded(log, true); };
+    log.append(toggle, entries);
+    setLogExpanded(log, logExpanded);
+    return log;
   }
   function rolesOverlay() {
     const overlay = el("div", "game-overlay");
@@ -273,17 +509,20 @@ const GameUI = (() => {
     root().append(header(phaseText, game.phase === "placement" ? "每人每次部署一艘 · 初始0档 · 确认后轮到下一位舰长" : "位置公开 / 舰种隐藏 · 移动与回合原型"));
     const layout = el("div", "game-layout");
     layout.inert = game.phase === "roles" || (game.phase === "battle" && Date.now() / 1000 < game.battle_starts_at);
-    const field = el("div", "battle-field"); field.append(board());
-    const logs = el("aside", "battle-log"); logs.setAttribute("aria-label", "对局记录");
-    logs.append(el("h3", "", "对局记录"), el("span", "eyebrow", "MISSION LOG"));
-    const entries = el("div", "battle-log-entries");
-    let round = 0;
-    for (const entry of game.logs) {
-      if (entry.round !== round) { round = entry.round; entries.append(el("h4", "", "第 " + round + " 轮")); }
-      entries.append(el("p", "log-" + entry.kind, entry.text));
+    const field = el("div", "battle-field");
+    const dock = el("div", "board-dock");
+    if ((draft && game.phase === "placement") || (selected && game.phase === "battle" && canAct())) {
+      dock.append(shipMenu());
+    } else {
+      const message = placementNotice || (game.phase === "placement"
+        ? selected ? "点选空格，预览部署位置。" : "拖拽舰船到空格，或点选舰船后选择空格。"
+        : "公共棋盘 · 点选己方舰船查看操作");
+      const hint = el("p", "board-hint", message);
+      hint.setAttribute("role", "status");
+      dock.append(hint);
     }
-    if (!game.logs.length) entries.append(el("p", "hint", "全员放置完毕后开始记录"));
-    logs.append(entries); layout.append(field, logs, playerConsole()); root().append(layout);
+    field.append(board(), dock);
+    layout.append(field, playerConsole()); root().append(layout);
     if (game.phase === "roles") root().append(rolesOverlay());
     if (game.phase === "battle" && Date.now() / 1000 < game.battle_starts_at) {
       const intro = el("div", "game-overlay battle-intro"); intro.append(el("h2", "", "战斗开始")); root().append(intro);
@@ -291,16 +530,18 @@ const GameUI = (() => {
     const deadlines = [game.busy_until * 1000, game.battle_starts_at * 1000, toastUntil].filter((deadline) => deadline > Date.now());
     if (deadlines.length) timer = setTimeout(draw, Math.min(...deadlines) - Date.now() + 30);
     const logKey = game.logs.length + ":" + game.phase;
-    entries.scrollTop = pendingKey !== logKey && followingLog ? entries.scrollHeight : previousScroll;
+    const entries = layout.querySelector(".battle-log-entries");
+    entries.scrollTop = !logExpanded || (pendingKey !== logKey && followingLog) ? entries.scrollHeight : previousScroll;
     pendingKey = logKey;
   }
   function render(state, playerId, send) {
+    trackMotions(game, state.game);
     room = state; me = playerId; emit = send; game = state.game;
     if (!game) { reset(); return; }
     if (lastPhase !== game.phase) { selected = null; draft = null; mode = "selected"; targetGear = null; }
     const turn = game.round + ":" + game.current_player;
     if (lastTurn !== turn) {
-      selected = null; draft = null; mode = "selected"; targetGear = null;
+      selected = null; draft = null; mode = "selected"; targetGear = null; placementNotice = "";
       if (game.phase === "battle" && game.current_player === me) toastUntil = Math.max(Date.now(), game.busy_until * 1000, game.battle_starts_at * 1000) + 1100;
     }
     lastPhase = game.phase; lastTurn = turn; draw();
