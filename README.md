@@ -33,13 +33,13 @@
 Windows PowerShell：
 
 ```powershell
-cd D:\AIWorks\PythonFinal
+cd C:\Users\ryx10\Documents\PythonFinal
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe run.py
 ```
 
-已安装依赖后，后续只需执行最后一行。不需要激活虚拟环境。
+已安装依赖后，Windows 可双击仓库根目录的 start-lobby.cmd。它会在后台启动大厅并打开浏览器，关闭启动窗口后服务继续运行，启动日志写入 server.log。重复启动会复用已有大厅。服务电脑重启后需再次双击启动。也可运行 .\.venv\Scripts\python.exe run.py --background。
 
 macOS / Linux：
 
@@ -54,7 +54,7 @@ python3 -m venv .venv
 ## 多人联机步骤
 
 1. 所有人连接同一 Wi-Fi，或连接到可以互相访问的同一局域网。
-2. 只需一台电脑运行服务，并保持终端窗口打开。
+2. 只需一台电脑提供服务。双击 start-lobby.cmd 可在后台运行，队友仅需打开网页。使用普通 run.py 命令前台运行时，需保持终端窗口打开。
 3. 服务器启动时会打印本机地址和局域网候选地址。选择当前 Wi-Fi 网卡的 IPv4 地址；可以用 Windows 的 `ipconfig` 核对。VPN 和虚拟网卡地址通常不适用。
 4. 每个人在浏览器打开相同的局域网地址，例如 `http://192.168.1.20:8000`。这里的 IP 只是示例，要换成服务电脑的实际地址。
 5. 一人输入昵称并创建房间，将六位房间号告诉其他人。其余人输入昵称和房间号加入。
