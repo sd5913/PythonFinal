@@ -156,132 +156,6 @@ dialog p { line-height: 1.8; }
 .role-complete { min-width: 210px; margin-top: 18px; }
 .battle-intro h2 { color: #b9f5ff; font-size: clamp(32px, 6vw, 66px); letter-spacing: .3em; text-shadow: 0 0 40px #6dcddd; }
 .turn-toast { position: fixed; z-index: 20; top: 28%; left: 50%; transform: translateX(-50%); background: #0b2436ed; border: 1px solid #7fe0ec; padding: 20px 46px; color: #b8f4ff; font-size: 25px; pointer-events: none; box-shadow: 0 0 60px #0009; }
-@media (max-width: 900px) { .game-heading h2 { font-size: 21px; } .role-slot { padding: 12px 5px; font-size: 18px; } }
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(310px, 34%);
-  align-items: start;
-  gap: clamp(10px, 1.4vw, 22px);
-}
-.battle-field { min-width: 0; display: grid; justify-items: center; }
-.board-canvas { width: min(100%, max(420px, calc((100dvh - 174px) * 1.058))); }
-.board-canvas > svg { width: 100%; height: auto; display: block; border: 1px solid #31576c; }
-.map-art { pointer-events: none; }
-.map-cell { fill: transparent; stroke: transparent; cursor: pointer; }
-.map-cell:hover, .map-cell:focus, .map-cell.drag-over { fill: #77d9ef44; outline: none; stroke: #9ee9ff; stroke-width: 3; }
-.map-cell.occupied-cell { cursor: not-allowed; }
-.map-cell.occupied-cell:is(:hover, :focus, .drag-over) { fill: #fe6d663d; stroke: #ff9a95; }
-.map-cell.dim-cell { fill: #020a13a8; cursor: default; }
-.map-cell.shift-target { fill: #77d9ef56; stroke: #9bf2e8; stroke-width: 3; }
-.shifting .board-ship:not(.selected-ship) { opacity: .18; pointer-events: none; }
-.placing .board-ship, .deployment-ghost { pointer-events: none; }
-.board-ship { cursor: pointer; }
-.board-ship path { stroke: #08131d; stroke-width: 2; }
-.board-ship:is(:hover, :focus) path, .selected-ship path { stroke: #bcf6ff; stroke-width: 5; }
-.selected-ship image:first-child { filter: drop-shadow(0 0 6px #8beaff); }
-.ship-number { fill: #e2f1f7; font: bold 22px var(--mono); stroke: #06101d; stroke-width: 5; paint-order: stroke; pointer-events: none; }
-.deployment-ghost circle { fill: #79e4f32c; stroke: #b1f4fd; stroke-width: 3; stroke-dasharray: 7 6; }
-.board-dock {
-  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 76px;
-  padding: 7px 0; text-align: center;
-}
-.board-hint { color: #a7c8d8; font-size: 13px; }
-.ship-menu { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
-.ship-menu strong { color: var(--cyan); font-size: 13px; padding-right: 6px; }
-.ship-menu button { min-height: 32px; font-size: 12px; padding: 6px 10px; }
-.ship-menu button:disabled { opacity: .32; }
-.ship-menu .hint { font-size: 12px; margin: 0 4px; }
-
-.player-console {
-  position: relative; isolation: isolate; min-width: 0; border: 1px solid #9dc7dc;
-  padding: 14px; background: linear-gradient(155deg, #0a2434, #051420);
-  box-shadow: inset 0 0 0 4px #37607832, 0 12px 28px #0004;
-}
-.console-body { display: grid; gap: 9px; }
-.console-title { text-align: center; font-size: clamp(19px, 2vw, 28px); letter-spacing: .07em; }
-.console-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.console-label::after { content: ""; flex: 1; height: 1px; background: #8ab9ce; }
-.action-indicators, .console-resources { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.action-indicator {
-  display: flex; justify-content: space-evenly; align-items: center; gap: 4px;
-  padding: 6px 4px; color: #91b1c4; border: 1px solid #708eab;
-  background: #061a28; font-size: clamp(12px, 1.45vw, 19px); font-weight: 700;
-}
-.action-indicator.lit { color: #55f3fa; border-color: #55f3fa; }
-.indicator-state { display: flex; align-items: center; gap: 5px; }
-.indicator-state::before { content: ""; width: .65em; height: .65em; border-radius: 50%; background: currentColor; }
-.lit .indicator-state::before { box-shadow: 0 0 11px #55f3fa; }
-.ship-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; border: 1px solid #7eb4cc; padding: 2px; }
-.summary-ship { text-align: center; min-width: 0; color: #94d5ee; font: clamp(11px, 1.2vw, 17px) var(--mono); }
-.summary-ship > span { display: block; padding: 3px 0; }
-.summary-role { position: relative; padding: 5px 1px 8px; color: #061a27; background: #c5dfef; font: 700 clamp(11px, 1.2vw, 16px) sans-serif; white-space: nowrap; }
-.card-gear-marker { position: absolute; inset: auto 22% 2px; width: 56%; height: 4px; }
-.intel-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 2px 4px; }
-.intel-table th { color: #97d5ed; font: clamp(10px, 1.1vw, 16px) var(--mono); text-align: center; }
-.intel-table thead th:first-child { width: 14%; }
-.fleet-badge img {
-  display: block; width: min(100%, 38px); aspect-ratio: 1; object-fit: contain; margin: auto; padding: 3px;
-  border: 2px solid var(--fleet); border-radius: 50%; background: #132f41;
-}
-.intel-cell { height: clamp(32px, 3.5vw, 49px); background: #c5dfef; border-top: 2px solid #6faecb; }
-.intel-cell.drag-over { background: #83e6f5; }
-.intel-cell-markers { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 1px; }
-.intel-token { display: block; width: 23%; max-width: 28px; aspect-ratio: 1; object-fit: contain; border-radius: 50%; }
-.console-resources { grid-template-columns: 1.15fr 1fr; }
-.console-orders { min-width: 0; display: grid; gap: 6px; }
-.energy-panel, .intel-palette { min-width: 0; border: 1px solid #80a8bd; padding: 7px; }
-.energy-panel h4, .intel-palette h4 { margin: 0 0 5px; border-bottom: 1px solid #6d9cb2; padding-bottom: 4px; font-size: 13px; }
-.energy-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
-.energy-count { font: bold 21px var(--mono); color: #55f3fa; }
-.energy-bank { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
-.energy-block { display: block; aspect-ratio: .74; background: url('/static/assets/energy.png') center / contain no-repeat; }
-.energy-block.spent { opacity: .16; filter: grayscale(1); }
-.energy-block.flashing { animation: energy-flash .6s ease-in-out infinite alternate; }
-@keyframes energy-flash { to { opacity: .27; filter: brightness(1.8); } }
-.intel-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
-.intel-group { display: flex; justify-content: center; align-items: center; gap: 3px; padding: 3px; background: #c5dfef; }
-.intel-group .intel-token { width: calc(50% - 2px); cursor: grab; }
-.intel-palette p { margin: 5px 0 0; font-size: 10px; color: #c8deec; }
-.end-turn { width: 100%; min-height: 31px; padding: 4px 8px; color: #111923; background: #f7b24e; border-color: #ffd17e; }
-.end-turn:hover:not(:disabled) { background: #ffd17e; }
-.end-turn:disabled { opacity: .48; }
-.ship-tray { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-.tray-ship { display: grid; justify-items: center; gap: 3px; min-width: 0; min-height: 0; padding: 4px; color: var(--fleet); cursor: grab; font-size: 11px; }
-.tray-ship.active { border-color: #baf5fc; background: #284c5b; }
-.tray-ship img { width: 24px; height: 30px; object-fit: contain; }
-.console-lock {
-  position: absolute; z-index: 1; inset: 0 0 87px; display: grid; place-items: center;
-  background: #03091396; color: #ebf8ff; padding: 12px; text-align: center; pointer-events: none;
-}
-.battle-log {
-  position: relative; z-index: 2; display: flex; flex-direction: column; min-width: 0;
-  height: 77px; margin-top: 9px; border: 1px solid #82adc4; background: #102c3d;
-}
-.battle-log.expanded { position: absolute; inset: 0 0 0; height: auto; margin: 0; background: #041521ba; }
-.log-toggle {
-  flex: none; display: flex; justify-content: space-between; align-items: center; min-height: 22px;
-  padding: 3px 8px; text-align: left; color: #d5eefb; background: #0b2539de; border: 0; font-size: 12px;
-}
-.log-toggle::after { content: "▴"; }
-.expanded .log-toggle::after { content: "▾"; }
-.battle-log-entries { flex: 1; min-height: 0; overflow: hidden; padding: 2px 7px; color: #eefaff; }
-.battle-log:not(.expanded) .battle-log-entries { cursor: pointer; }
-.expanded .battle-log-entries { overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #79a9c1 #04152199; }
-.battle-log-entries h4, .battle-log-entries p { margin: 0; padding: 1px 5px; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
-.battle-log-entries h4, .battle-log-entries .log-turn { color: #bcf1ff; font-weight: 700; }
-.battle-log-entries .log-passive { color: #c3e2ec; }
-.expanded .battle-log-entries > * { background: #091d2fa8; }
-
-.game-overlay { position: absolute; z-index: 15; inset: 0; background: #020814c9; display: flex; align-items: center; justify-content: center; padding: 25px; min-height: 600px; }
-.role-card { width: min(850px, 100%); text-align: center; border: 1px solid #52889d; background: linear-gradient(140deg,#153347,#0a1726); padding: 32px 24px; box-shadow: 0 30px 100px #0008; }
-.role-card h2 { margin: 18px 0 28px; font-size: 27px; }
-.role-slots { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border: 1px solid #426a7c; margin-bottom: 24px; }
-.role-slot { font: 24px var(--mono); color: #9bddec; padding: 18px 10px; border-right: 1px solid #426a7c; margin: 0; }
-.role-slot:last-child { border: 0; }
-.role-icon { display: block; font-size: 38px; margin: 15px 0; }
-.role-slot select { width: 100%; color: #163040; background: #dae8f1; border: 1px solid #7da8b8; padding: 10px 4px; font: 12px "Microsoft YaHei", sans-serif; }
-.role-complete { min-width: 210px; margin-top: 18px; }
-.battle-intro h2 { color: #b9f5ff; font-size: clamp(32px, 6vw, 66px); letter-spacing: .3em; text-shadow: 0 0 40px #6dcddd; }
-.turn-toast { position: fixed; z-index: 20; top: 28%; left: 50%; transform: translateX(-50%); background: #0b2436ed; border: 1px solid #7fe0ec; padding: 20px 46px; color: #b8f4ff; font-size: 25px; pointer-events: none; box-shadow: 0 0 60px #0009; }
 @media (max-width: 900px) {
   .game-heading h2 { font-size: 21px; }
   .role-slot { padding: 12px 5px; font-size: 18px; }
@@ -307,3 +181,48 @@ dialog p { line-height: 1.8; }
   .settings-button { right: 10px; top: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { .energy-block.flashing { animation: none; outline: 2px solid #ffeab9; } }
+/* Fit the match to the current viewport, reserving a separate command row. */
+body:has(.match-view) { height: 100dvh; min-height: 0; overflow: hidden; }
+body:has(.match-view) main { max-width: none; height: 100%; padding: 0 12px; display: flex; flex-direction: column; }
+body:has(.match-view) .topbar { flex: none; min-height: 38px; height: 38px; }
+body:has(.match-view) .brand svg { width: 24px; height: 24px; }
+body:has(.match-view) .brand { font-size: 11px; }
+body:has(.match-view) .brand small { display: none; }
+body:has(.match-view) .network-tag { padding: 4px 8px; }
+body:has(.match-view) .settings-button { top: 3px; right: 12px; width: 32px; min-height: 30px; font-size: 19px; }
+#game-view.match-view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 0 8px; }
+.match-view .game-heading { flex: none; gap: 8px; margin-bottom: 6px; }
+.match-view .game-heading > div { min-width: 0; }
+.match-view .game-heading h2 { font-size: 18px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.match-view .game-heading .eyebrow { display: none; }
+.match-view .game-heading .hint { font-size: 11px; margin: 0; }
+.match-view .phase-badge { flex: none; padding: 6px 8px; margin: 0; font-size: 10px; }
+.match-view .game-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) var(--console-width); grid-template-rows: minmax(0, 1fr); gap: 12px; align-items: start; }
+.match-view .battle-field { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.board-space { flex: 1; width: 100%; min-height: 0; display: flex; justify-content: center; align-items: center; }
+.match-view .board-canvas { flex: none; }
+.match-view .board-dock { flex: none; min-height: 46px; padding: 4px; }
+.match-view .board-hint { margin: 0; line-height: 1.4; }
+.match-view .ship-menu { gap: 5px; }
+.match-view .ship-menu strong { font-size: 12px; }
+.match-view .ship-menu button { padding: 6px 9px; }
+.console-viewport { position: relative; justify-self: end; min-width: 0; }
+.match-view .player-console { position: absolute; top: 0; left: 0; width: 480px; max-width: none; margin: 0; transform-origin: top left; display: flex; flex-direction: column; }
+.match-view .console-body { gap: 9px; }
+.match-view .console-title { font-size: 26px; }
+.match-view .action-indicator { font-size: 19px; }
+.match-view .summary-ship { font-size: 16px; }
+.match-view .summary-role { font-size: 16px; }
+.match-view .intel-table th { font-size: 16px; }
+.match-view .intel-cell { height: 49px; }
+.match-view .intel-cell .intel-token { width: 22px; }
+.match-view .battle-log-slot { flex: none; margin-top: auto; padding-top: 9px; height: 86px; }
+.match-view .battle-log:not(.expanded) { margin: 0; }
+.match-view .game-overlay { min-height: 0; overflow: auto; }
+.match-view .portrait-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 6px; }
+.portrait-layout .console-viewport { justify-self: center; }
+@media (max-height: 600px) {
+  body:has(.match-view) .topbar { display: none; }
+  .match-view .game-heading { padding-right: 38px; }
+  .match-view .game-heading .hint { display: none; }
+}

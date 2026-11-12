@@ -10,6 +10,32 @@ const GameUI = (() => {
   const intelType = "application/x-dark-campaign-intel";
   const intelShapes = {ship: "舰船", radar: "雷达"};
   const intelColors = {blue: "推测", yellow: "确认"};
+  let layoutFrame = 0;
+  const layoutObserver = new ResizeObserver(() => {
+    cancelAnimationFrame(layoutFrame);
+    layoutFrame = requestAnimationFrame(fitLayout);
+  });
+  function fitLayout() {
+    const layout = root().querySelector(".game-layout");
+    if (!layout || !layout.clientWidth || !layout.clientHeight) return;
+    const viewport = layout.querySelector(".console-viewport");
+    const panel = viewport.firstElementChild;
+    const portrait = layout.clientWidth < 650 && layout.clientHeight > layout.clientWidth;
+    layout.classList.toggle("portrait-layout", portrait);
+    panel.style.height = "auto";
+    const naturalHeight = panel.offsetHeight;
+    const availableHeight = portrait ? layout.clientHeight * .48 : layout.clientHeight;
+    const availableWidth = layout.clientWidth * (portrait ? 1 : .36);
+    const scale = Math.min(availableWidth / 480, availableHeight / naturalHeight);
+    viewport.style.width = 480 * scale + "px";
+    viewport.style.height = availableHeight + "px";
+    panel.style.transform = `scale(${scale})`;
+    panel.style.height = availableHeight / scale + "px";
+    layout.style.setProperty("--console-width", 480 * scale + "px");
+    const space = layout.querySelector(".board-space");
+    const canvas = space.firstElementChild;
+    canvas.style.width = Math.max(0, Math.min(space.clientWidth, space.clientHeight * 1625 / 1536)) + "px";
+  }
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -38,6 +64,8 @@ const GameUI = (() => {
   }
   document.getElementById("close-alert").onclick = () => document.getElementById("game-alert").close();
   function reset() {
+    layoutObserver.disconnect(); cancelAnimationFrame(layoutFrame);
+    root().classList.remove("match-view");
     clearTimeout(timer); selected = null; draft = null; targetGear = null; mode = "selected";
     roleDraft = ["", "", "", "", ""]; lastPhase = null; lastTurn = null; pendingKey = "";
     placementNotice = ""; logExpanded = false; toastUntil = 0;
@@ -214,10 +242,10 @@ const GameUI = (() => {
         "aria-label": `${crew.name} ${ship.number}号舰船 ${ship.column}${ship.ring} ${ship.gear}档`});
       const degrees = (ship.column - .5) * 15 + (ship.direction === 1 ? 90 : -90);
       const heading = svg("g", {transform: `rotate(${degrees})`});
-      heading.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -25, y: -32, width: 50, height: 64}));
-      if (ship.gear > 0) heading.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -22, y: 27, width: 44, height: 10, class: "gear-marker", "aria-label": ship.gear + "档"}));
-      heading.append(svg("path", {d: "M-9 -40 0 -52 9 -40Z", fill: color(crew)}));
-      const num = svg("text", {x: 0, y: 54, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number + " / " + ship.gear;
+      heading.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -43, y: -52, width: 86, height: 104}));
+      if (ship.gear > 0) heading.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -38, y: 43, width: 76, height: 13, class: "gear-marker", "aria-label": ship.gear + "档"}));
+      heading.append(svg("path", {d: "M-10 -52 0 -64 10 -52Z", fill: color(crew)}));
+      const num = svg("text", {x: 0, y: 76, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number + " / " + ship.gear;
       token.append(heading, num);
       const select = () => {
         if (crew.id !== me || !canAct() || game.phase !== "battle" || mode === "shift") return;
@@ -231,8 +259,8 @@ const GameUI = (() => {
     if (draft && game.phase === "placement") {
       const pos = locationOf(draft);
       const ghost = svg("g", {transform: `translate(${pos.x},${pos.y})`, class: "deployment-ghost"});
-      ghost.append(svg("circle", {r: 44}));
-      ghost.append(svg("image", {href: `/static/assets/${myself().fleet}-${selected}.png`, x: -25, y: -32, width: 50, height: 64,
+      ghost.append(svg("circle", {r: 58}));
+      ghost.append(svg("image", {href: `/static/assets/${myself().fleet}-${selected}.png`, x: -43, y: -52, width: 86, height: 104,
         transform: `rotate(${(draft.column - .5) * 15 + (draft.direction === 1 ? 90 : -90)})`}));
       map.append(ghost);
     }
@@ -499,11 +527,13 @@ const GameUI = (() => {
     overlay.append(card); return overlay;
   }
   function draw() {
+    layoutObserver.disconnect(); cancelAnimationFrame(layoutFrame);
     const previousLog = root().querySelector(".battle-log-entries");
     const previousScroll = previousLog ? previousLog.scrollTop : 0;
     const followingLog = !previousLog || previousLog.scrollHeight - previousLog.clientHeight - previousScroll < 35;
     clearTimeout(timer); root().replaceChildren();
     if (!game) return;
+    root().classList.toggle("match-view", game.phase !== "fleet");
     if (game.phase === "fleet") { fleetSelection(); return; }
     const phaseText = game.phase === "roles" ? "秘密配置舰种" : game.phase === "placement" ? "轮流部署舰船" : "第 " + game.round + " 轮 · " + captain(current()) + "的回合";
     root().append(header(phaseText, game.phase === "placement" ? "每人每次部署一艘 · 初始0档 · 确认后轮到下一位舰长" : "位置公开 / 舰种隐藏 · 移动与回合原型"));
@@ -521,8 +551,16 @@ const GameUI = (() => {
       hint.setAttribute("role", "status");
       dock.append(hint);
     }
-    field.append(board(), dock);
-    layout.append(field, playerConsole()); root().append(layout);
+    const space = el("div", "board-space");
+    space.append(board());
+    field.append(space, dock);
+    const consoleViewport = el("div", "console-viewport");
+    consoleViewport.append(playerConsole());
+    layout.append(field, consoleViewport); root().append(layout);
+    fitLayout();
+    layoutObserver.observe(layout);
+    layoutObserver.observe(dock);
+    layoutObserver.observe(consoleViewport.querySelector(".console-body"));
     if (game.phase === "roles") root().append(rolesOverlay());
     if (game.phase === "battle" && Date.now() / 1000 < game.battle_starts_at) {
       const intro = el("div", "game-overlay battle-intro"); intro.append(el("h2", "", "战斗开始")); root().append(intro);
