@@ -1,0 +1,8 @@
+{
+  "name": "dark-campaign-visual-effects",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node checks.js" },
+  "description": "Standalone Canvas 2D effects. No runtime dependencies."
+}

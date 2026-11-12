@@ -1,6 +1,6 @@
-# PythonFinal 深空乱斗移动原型
+# PythonFinal 深空乱斗 V2
 
-《深空乱斗 Dark Campaign》的局域网多人回合制移动原型。由一台电脑运行 Python 服务，同一 Wi-Fi 或局域网内的其他设备通过浏览器加入。支持 2—4 人，从备战大厅进入舰队选择、秘密配置舰种、轮流放船和正式移动回合。
+《深空乱斗 Dark Campaign》的局域网多人回合制对战游戏。由一台电脑运行 Python 服务，同一 Wi-Fi 或局域网内的其他设备通过浏览器加入。支持 2—4 人，从备战大厅进入舰队选择、秘密配置舰种、轮流放船、移动、战术对战和母舰胜负。
 
 ## 当前功能
 
@@ -24,7 +24,7 @@
 
 两人加入同一房间 → 双方准备 → 房主开始游戏 → 分别选择不同舰队 → 各自完成舰种配置 → 交替放置十艘船 → 等待开局提示 → 当前玩家点选己方船，选择移动、调档或横移 → 结束回合。
 
-完整的范围、默认规则和验收说明见 [PROTOTYPE.md](PROTOTYPE.md)。本版暂不结算战术、碰撞、拾取、水滴、星云或四维空间事件。
+V2 已加入战术、碰撞、伤害、掉落、拾取、修复和母舰胜负。确认后的规则与素材位置见 [V2.md](V2.md)。水滴、星云和四维空间事件留待后续版本。
 
 ## 启动服务
 
@@ -71,11 +71,12 @@ python3 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-测试覆盖四人同步、满房、身份校验、断线退出、房主交接、阶段流转、舰种隔离、回合权限、横移与调档顺序、能量扣除和边界。GitHub Actions 会在推送和 Pull Request 时运行测试。
+测试覆盖四人同步、身份校验、断线退出、阶段流转、舰种隔离、移动部署、战术消耗、多人碰撞、途中暂停继续、拾取优先级、即时修复、母舰连锁摧毁和同时淘汰平局。GitHub Actions 会在推送和 Pull Request 时运行测试。
 
 ```text
 app/main.py          FastAPI 路由、房间状态、WebSocket
-app/game.py          游戏阶段、私密状态过滤和移动规则
+app/game.py          游戏阶段、私密状态过滤和移动部署
+app/combat.py        战术、逐格事件、碰撞、拾取和胜负结算
 app/static/          浏览器网页、样式、交互代码
 app/static/assets/   项目组提供的舰船、能量、档位图片
 run.py               启动入口和局域网地址提示
@@ -87,7 +88,7 @@ CONTRIBUTING.md      团队协作约定
 
 HTTP 用于创建和加入房间，WebSocket 用于身份校验、准备、测试信号、离开和状态推送。服务器生成玩家身份与凭证，并按房间串行处理状态变更。
 
-游戏命令包括 `start_game`、`choose_fleet`、`begin_deployment`、`set_roles`、`place_ship`、`set_gear`、`shift`、`turn_ship`、`end_turn`、`exit_game`。所有命令由服务器校验，广播时分别为每名玩家生成状态，只有本人能收到己方舰种。暂停和其他设置可继续扩展游戏命令与设置菜单，当前打开设置菜单不会暂停对局。
+游戏命令包括 `start_game`、`choose_fleet`、`begin_deployment`、`set_roles`、`place_ship`、`set_gear`、`shift`、`turn_ship`、`end_turn`、`exit_game`。所有命令由服务器校验，广播时分别为每名玩家生成状态，只有本人能收到己方舰种及原生弹药。V2 新命令为 attack、scan、collision_choice，服务端定时推进移动与事件。暂停和其他设置可继续扩展游戏命令与设置菜单，当前打开设置菜单不会暂停对局。
 
 WebSocket 地址为 `/ws/{room_code}`，连接后第一条消息携带 `player_id` 和 `token`。后续命令包括 `set_ready`、`test_signal`、`ping` 和 `leave`；服务器推送 `room_state`、`pong` 或 `error`。所有浏览器根据服务器状态更新页面。
 

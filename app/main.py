@@ -17,6 +17,7 @@ from . import game
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="PythonFinal LAN Lobby")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/visual-effects", StaticFiles(directory=STATIC.parent.parent / "visual-effects"), name="visual-effects")
 
 
 class NameInput(BaseModel):
@@ -45,6 +46,7 @@ class Room:
     touched: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     game: Optional[dict] = None
+    progress_task: Optional[asyncio.Task] = None
 
     def snapshot(self, viewer=None):
         # Never serialize Player directly: the reconnect token is private.
@@ -92,6 +94,22 @@ def add_player(room, name):
     return {"room_code": room.code, "player_id": player.id, "token": player.token}
 
 
+def schedule_progress(room):
+    if room.game is None or not room.game["due_at"]:
+        return
+    if room.progress_task is None or room.progress_task.done():
+        room.progress_task = asyncio.create_task(progress(room, room.game))
+
+
+async def progress(room, match):
+    await asyncio.sleep(max(0, match["due_at"] - time.time()))
+    async with room.lock:
+        room.progress_task = None
+        if room.game is match and rooms.get(room.code) is room:
+            game.combat.advance(match)
+            await broadcast(room)
+
+
 async def broadcast(room, event=None):
     # Caller holds room.lock; one slow/disconnected peer must not block the lobby.
     while room.players:
@@ -112,6 +130,7 @@ async def broadcast(room, event=None):
         failed = await asyncio.gather(*(send(p) for p in room.players.values()))
         removed = [p for p in failed if p is not None]
         if not removed:
+            schedule_progress(room)
             return
         for player in removed:
             room.players.pop(player.id, None)

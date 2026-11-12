@@ -1,10 +1,12 @@
 """Behavioral checks for secrecy, staging and turn/energy rules."""
 from contextlib import ExitStack
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app import game
+from app import combat
 from app.main import Player, Room, app, rooms
 
 ROLES = ["attack", "scout", "mothership", "attack", "scout"]
@@ -19,7 +21,20 @@ def room():
 
 
 def apply(room, player, action, **fields):
-    return game.apply(room, player, {"type": action, **fields})
+    result = game.apply(room, player, {"type": action, **fields})
+    if action in ("set_gear", "shift", "end_turn"):
+        settle(room)
+    return result
+
+
+def settle(room):
+    for _ in range(100):
+        match = room.game
+        if not match["due_at"]:
+            break
+        with patch("app.combat.time.time", return_value=match["due_at"] + .01):
+            combat.advance(match)
+    room.game["busy_until"] = room.game["battle_starts_at"] = 0
 
 
 def prepare(room):
@@ -38,6 +53,7 @@ def battle(room):
             column = (number + 22) % 24 + 1 if actor == "a" else number + 11
             apply(room, actor, "place_ship", ship=number, column=column, ring="B", direction=1)
     room.game["battle_starts_at"] = room.game["busy_until"] = 0
+    settle(room)
 
 
 def end_turn(room, actor):

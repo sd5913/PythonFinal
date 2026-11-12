@@ -1,0 +1,12 @@
+#dark-effects-release { --space: #091b2b; --ink: #dbf7fa; --blue-fx: #52d9ff; --hot-fx: #ff9950; }
+#dark-effects-release .fx-heading { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:16px; padding-right:90px; }
+#dark-effects-release .fx-heading h2 { flex:1; }
+#dark-effects-release .fx-scenes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 16px; }
+#dark-effects-release .fx-scene { min-width:0; }
+#dark-effects-release .fx-label { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+#dark-effects-release canvas { width:100%; height:auto; display:block; aspect-ratio:480/260; background:var(--space); border-radius:12px; }
+#dark-effects-release .fx-caption { margin-top:6px; }
+@media(max-width:540px) { #dark-effects-release .fx-scenes { grid-template-columns:1fr; } #dark-effects-release .fx-heading { padding-right:0; } }
+
+#dark-effects-release .fx-selectors { margin-bottom:18px; }
+#dark-effects-release .fx-status { margin-top:14px; }
