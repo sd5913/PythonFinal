@@ -27,7 +27,7 @@ const GameMedia = (() => {
   function refresh() {
     for (const token of document.querySelectorAll(".board-ship")) {
       const key = token.dataset.owner + ":" + token.dataset.number;
-      token.querySelector(".ship-heading").style.opacity = hidden.has(key) ? "0" : "";
+      token.querySelector(".ship-hull").style.opacity = hidden.has(key) ? "0" : "";
     }
   }
   async function play(event, effect, duration) {
@@ -40,7 +40,8 @@ const GameMedia = (() => {
     Object.assign(canvas.style, {left: rect.left + "px", top: rect.top + "px", width: rect.width + "px", height: rect.height + "px"});
     document.body.append(canvas);
     const key = event.owner + ":" + event.number;
-    hidden.set(key, (hidden.get(key) || 0) + 1);
+    const hideHull = effect !== "ship_move";
+    if (hideHull) hidden.set(key, (hidden.get(key) || 0) + 1);
     refresh();
     const sizeFactor = effect === "ship_move" ? 1.25 : 1;
     const player = new DarkCampaignFX.Player(canvas, art, {width: 1625 * sizeFactor, height: 1536 * sizeFactor, pixelRatio: 1});
@@ -51,6 +52,7 @@ const GameMedia = (() => {
       color: event.fleet, number: event.number, x: pos.x, y: pos.y,
       rotation: ((event.column - .5) * 15 + (event.direction === 1 ? 90 : -90)) * Math.PI / 180,
       scale: .8, duration,
+      hideShip: !hideHull,
     };
     if (effect === "ship_move") {
       const delta = ((event.column - event.from_column + 36) % 24) - 12;
@@ -65,8 +67,10 @@ const GameMedia = (() => {
       await player.play(effect, options).finished;
     } finally {
       player.dispose(); canvas.remove(); jobs.delete(job);
-      const count = (hidden.get(key) || 1) - 1;
-      if (count) hidden.set(key, count); else hidden.delete(key);
+      if (hideHull) {
+        const count = (hidden.get(key) || 1) - 1;
+        if (count) hidden.set(key, count); else hidden.delete(key);
+      }
       refresh();
     }
   }

@@ -72,6 +72,7 @@
     c.closePath();c.fillStyle=fill;c.fill();
   }
   function vessel(c,x,y,angle=0,kind='blue',flash=0,scan=0) {
+    if(settings.hideShip)return;
     c.save();c.translate(x,y);c.rotate(angle);const key=kind==='red'?settings.otherColor+'-'+settings.otherNumber:settings.color+'-'+settings.number;const img=art[key],w=108,h=142;
     if(flash>0){c.shadowColor='#61e1ff';c.shadowBlur=22*flash;}
     c.drawImage(img,-w/2,-h/2,w,h);c.shadowBlur=0;

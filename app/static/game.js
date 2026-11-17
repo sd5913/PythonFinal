@@ -160,6 +160,7 @@ const GameUI = (() => {
       } else {
         placementNotice = "";
         draft = {column, ring, direction: 1};
+        motions.delete("draft");
       }
       draw();
     } else if (game.phase === "battle" && mode === "shift") {
@@ -175,6 +176,7 @@ const GameUI = (() => {
     return {
       column: motion.column + motion.columns * eased,
       radius: motion.radius + (motion.endRadius - motion.radius) * eased,
+      rotation: motion.rotation + motion.turn * eased,
       finished: progress === 1,
     };
   }
@@ -186,15 +188,18 @@ const GameUI = (() => {
       const oldCrew = previous.crews.find((item) => item.id === crew.id);
       for (const ship of crew.ships) {
         const old = oldCrew?.ships.find((item) => item.number === ship.number);
-        if (!old || (old.column === ship.column && old.ring === ship.ring)) continue;
+        if (!old || (old.column === ship.column && old.ring === ship.ring && old.direction === ship.direction)) continue;
         const key = crew.id + ":" + ship.number;
         const running = motions.get(key);
-        const from = running ? pose(running, now) : {column: old.column, radius: ringCenter(old.ring)};
+        const from = running ? pose(running, now) : {column: old.column, radius: ringCenter(old.ring),
+          rotation: (old.column - .5) * 15 + (old.direction === 1 ? 90 : -90)};
         // The largest legal angular movement is three sectors. Unwrap across 24/1.
         const columns = ((ship.column - from.column + 36) % 24) - 12;
         motions.set(key, {
           column: from.column, columns, radius: from.radius, endRadius: ringCenter(ship.ring),
-          start: now, duration: Math.min(720, 260 + Math.abs(columns) * 150),
+          rotation: from.rotation, turn: old.direction !== ship.direction
+            ? (running ? running.rotation + running.turn : from.rotation) + 180 - from.rotation : columns * 15,
+          start: now, duration: old.direction !== ship.direction ? 600 : 350,
         });
       }
     }
@@ -207,7 +212,7 @@ const GameUI = (() => {
       if (currentPose.finished && motions.get(key) === motion) motions.delete(key);
       const pos = point(currentPose.column, currentPose.radius);
       token.setAttribute("transform", `translate(${pos.x + offsetX},${pos.y + offsetY})`);
-      heading.setAttribute("transform", `rotate(${(currentPose.column - .5) * 15 + (ship.direction === 1 ? 90 : -90)})`);
+      heading.setAttribute("transform", `rotate(${currentPose.rotation})`);
       if (!currentPose.finished) requestAnimationFrame((nextTime) => {
         if (token.isConnected) frame(nextTime);
       });
@@ -261,9 +266,9 @@ const GameUI = (() => {
       const items = ["energy", "missile", "probe", "repair"].filter(item => pile[item]);
       const marker = svg("g", {class: "ground-items", transform: `translate(${pos.x},${pos.y})`});
       items.forEach((item, index) => {
-        const x = (index - (items.length - 1) / 2) * 29;
-        marker.append(svg("image", {href: `/static/assets/${item}.png`, x: x - 14, y: -14, width: 28, height: 28}));
-        const count = svg("text", {x, y: 31, class: "ship-number", "text-anchor": "middle"});
+        const x = (index % 2 - .5) * 48, y = (Math.floor(index / 2) - .5) * 48;
+        marker.append(svg("image", {href: `/static/assets/${item}.png`, x: x - 23, y: y - 23, width: 46, height: 46, class: "board-item"}));
+        const count = svg("text", {x: x + 18, y: y + 24, class: "item-count", "text-anchor": "middle"});
         count.textContent = pile[item]; marker.append(count);
       });
       map.append(marker);
@@ -286,20 +291,26 @@ const GameUI = (() => {
         "aria-label": `${crew.name} ${ship.number}号舰船 ${ship.column}${ship.ring} ${ship.gear}档`});
       if (mode.endsWith("-source") && (crew.id !== me || !capable(ship, tacticKind()))) token.classList.add("tactical-muted");
       if (mode.endsWith("-target") && (crew.id === me || !inRange(ship))) token.classList.add("tactical-muted");
+      if (mode === "confirm-attack" && target?.owner === crew.id && target.number === ship.number) {
+        token.append(svg("circle", {r: 70, class: "attack-target-ring"}));
+      }
       const degrees = (ship.column - .5) * 15 + (ship.direction === 1 ? 90 : -90);
       const heading = svg("g", {transform: `rotate(${degrees})`, class: "ship-heading"});
-      heading.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -43, y: -52, width: 86, height: 104}));
-      if (ship.gear > 0) heading.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -38, y: 43, width: 76, height: 13, class: "gear-marker", "aria-label": ship.gear + "档"}));
-      heading.append(svg("path", {d: "M-10 -52 0 -64 10 -52Z", fill: color(crew)}));
-      const num = svg("text", {x: 0, y: 76, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number + " / " + ship.gear;
+      const hull = svg("g", {class: "ship-hull"});
+      hull.append(svg("image", {href: `/static/assets/${crew.fleet}-${ship.number}.png`, x: -43, y: -52, width: 86, height: 104}));
+      if (ship.gear > 0) hull.append(svg("image", {href: `/static/assets/gear-${ship.gear}.png`, x: -38, y: 43, width: 76, height: 13, class: "gear-marker", "aria-label": ship.gear + "档"}));
+      hull.append(svg("path", {d: "M-10 -52 0 -64 10 -52Z", fill: color(crew)}));
+      heading.append(hull);
+      const num = svg("text", {x: 0, y: 124, "text-anchor": "middle", class: "ship-number"}); num.textContent = ship.number;
       token.append(heading, num);
       const badges = [];
       for (let i = 0; i < ship.damage; i++) badges.push("warning");
       for (const item of ["missile", "probe"]) if (ship[item]) badges.push(item);
       badges.forEach((item, index) => {
-        const badge = svg("image", {href: `/static/assets/${item}.png`, x: -72, y: -60 + index * 29, width: 27, height: 27, class: "ship-badge"});
+        const badge = svg("image", {href: `/static/assets/${item}.png`, x: (index % 2 - .5) * 48 - 23,
+          y: -50 + Math.floor(index / 2) * 48, width: 46, height: 46, class: "ship-badge board-item"});
         if (crew.id === me && selected === ship.number && previewItem() === item) badge.classList.add("component-preview");
-        token.append(badge);
+        heading.append(badge);
       });
       token.onclick = (e) => { e.stopPropagation(); selectShip(crew, ship); };
       token.onkeydown = (e) => { if (e.key === "Enter") selectShip(crew, ship); };
@@ -310,8 +321,14 @@ const GameUI = (() => {
       const pos = locationOf(draft);
       const ghost = svg("g", {transform: `translate(${pos.x},${pos.y})`, class: "deployment-ghost"});
       ghost.append(svg("circle", {r: 58}));
-      ghost.append(svg("image", {href: `/static/assets/${myself().fleet}-${selected}.png`, x: -43, y: -52, width: 86, height: 104,
+      const preview = svg("g", {});
+      preview.append(svg("image", {href: `/static/assets/${myself().fleet}-${selected}.png`, x: -43, y: -52, width: 86, height: 104,
         transform: `rotate(${(draft.column - .5) * 15 + (draft.direction === 1 ? 90 : -90)})`}));
+      ghost.append(preview);
+      if (motions.has("draft")) {
+        preview.firstChild.removeAttribute("transform");
+        animateShip(ghost, preview, draft, "draft", 0, 0);
+      }
       map.append(ghost);
     }
     container.append(map);
@@ -325,7 +342,17 @@ const GameUI = (() => {
     if (game.phase === "placement") {
       menu.append(el("span", "hint", draft.column + draft.ring + " · " + (draft.direction === 1 ? "顺时针" : "逆时针")),
         button("确认部署", () => { command({type: "place_ship", ship: selected, ...draft}); draft = null; selected = null; }),
-        button("转向", () => { draft.direction *= -1; draw(); }),
+        button("转向", () => {
+          const running = motions.get("draft");
+          const rotation = (draft.column - .5) * 15 + (draft.direction === 1 ? 90 : -90);
+          const from = running ? pose(running, performance.now()).rotation : rotation;
+          const end = running ? running.rotation + running.turn : rotation;
+          draft.direction *= -1;
+          motions.set("draft", {column: draft.column, columns: 0, radius: ringCenter(draft.ring),
+            endRadius: ringCenter(draft.ring), rotation: from, turn: end + 180 - from,
+            start: performance.now(), duration: 600});
+          draw();
+        }),
         button("取消", () => { draft = null; selected = null; draw(); }));
       return menu;
     }
@@ -534,10 +561,6 @@ const GameUI = (() => {
       body.append(el("h4", "console-label", "待部署舰船"), tray);
     }
     body.append(el("h4", "console-label", "舰船状态记录"), intelTable(), resources);
-    if (["placement", "battle"].includes(game.phase) && !canAct()) {
-      body.inert = false;
-      panel.append(el("div", "console-lock", busy() ? "正在结算移动或事件，请稍候" : "等待 " + captain(current())));
-    }
     panel.prepend(body);
     const logSlot = el("div", "battle-log-slot");
     logSlot.append(battleLog());
