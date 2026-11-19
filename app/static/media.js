@@ -3,10 +3,11 @@ const GameMedia = (() => {
   const sounds = {
     hit: "飞船碰撞.mp3", destroy: "爆炸.mp3", scan: "探测舰探测.mp3",
     move: "飞船飞行声音.mp3", energy: "获得能量 .mp3", items: "拾取物品.mp3",
+    droplet: "水滴飞行.mp3", card: "翻动卡片.mp3", nebula: "触发星云.mp3",
   };
   const radii = {A: 395.5, B: 508.5, C: 621};
   const hidden = new Map(), jobs = new Set(), audio = new Set();
-  let lastId = 0, enabled = false;
+  let lastId = 0, enabled = false, lastCard = null, dropletJobs = 0;
   const assets = DarkCampaignFX.loadAssets({base: "/visual-effects/assets/"}).catch(error => {
     console.error("视效素材加载失败", error);
     return null;
@@ -25,6 +26,7 @@ const GameMedia = (() => {
     return {x: 813 + Math.cos(angle) * radii[ring], y: 767 + Math.sin(angle) * radii[ring]};
   }
   function refresh() {
+    for (const icon of document.querySelectorAll(".world-icon.droplet")) icon.style.opacity = dropletJobs ? "0" : "";
     for (const token of document.querySelectorAll(".board-ship")) {
       const key = token.dataset.owner + ":" + token.dataset.number;
       token.querySelector(".ship-hull").style.opacity = hidden.has(key) ? "0" : "";
@@ -40,10 +42,12 @@ const GameMedia = (() => {
     Object.assign(canvas.style, {left: rect.left + "px", top: rect.top + "px", width: rect.width + "px", height: rect.height + "px"});
     document.body.append(canvas);
     const key = event.owner + ":" + event.number;
-    const hideHull = effect !== "ship_move";
+    const isDroplet = effect === "droplet_move";
+    const hideHull = effect !== "ship_move" && !isDroplet;
+    if (isDroplet) dropletJobs++;
     if (hideHull) hidden.set(key, (hidden.get(key) || 0) + 1);
     refresh();
-    const sizeFactor = effect === "ship_move" ? 1.25 : 1;
+    const sizeFactor = isDroplet ? 60 / 140 : effect === "ship_move" ? 1.25 : 1;
     const player = new DarkCampaignFX.Player(canvas, art, {width: 1625 * sizeFactor, height: 1536 * sizeFactor, pixelRatio: 1});
     const job = {player, canvas};
     jobs.add(job);
@@ -54,7 +58,7 @@ const GameMedia = (() => {
       scale: .8, duration,
       hideShip: !hideHull,
     };
-    if (effect === "ship_move") {
+    if (effect === "ship_move" || isDroplet) {
       const delta = ((event.column - event.from_column + 36) % 24) - 12;
       options.path = Array.from({length: 25}, (_, i) => {
         const t = i / 24;
@@ -67,6 +71,7 @@ const GameMedia = (() => {
       await player.play(effect, options).finished;
     } finally {
       player.dispose(); canvas.remove(); jobs.delete(job);
+      if (isDroplet) dropletJobs = Math.max(0, dropletJobs - 1);
       if (hideHull) {
         const count = (hidden.get(key) || 1) - 1;
         if (count) hidden.set(key, count); else hidden.delete(key);
@@ -91,6 +96,11 @@ const GameMedia = (() => {
       {duration: 850, easing: "ease-in-out"}).finished.finally(() => icon.remove());
   }
   function sync(game, viewer) {
+    if (game.pending?.type === "event_card" && game.pending.id !== lastCard) {
+      lastCard = game.pending.id;
+      sound("card");
+      if (game.pending.deck === "nebula") sound("nebula");
+    }
     const fresh = (game.effects || []).filter(event => event.id > lastId);
     const destroyed = new Set(fresh.filter(e => e.kind === "destroy").map(e => e.owner + ":" + e.number));
     let chain = 0;
@@ -99,6 +109,7 @@ const GameMedia = (() => {
       // Do not replay stale effects after a background tab resumes.
       if (Date.now() / 1000 - event.at > 8) continue;
       if (event.kind === "move") { sound("move"); play(event, "ship_move", 350); }
+      if (event.kind === "droplet_move") { sound("droplet"); play(event, "droplet_move", 550); }
       if (event.kind === "hit" && !destroyed.has(event.owner + ":" + event.number)) { sound("hit"); play(event, "ship_hit", 650); }
       if (event.kind === "scan") { sound("scan"); play(event, "ship_detected", 1500); }
       if (event.kind === "destroy") {
@@ -117,7 +128,7 @@ const GameMedia = (() => {
   }
   const destroyTimers = new Set();
   function reset() {
-    lastId = 0;
+    lastId = 0; lastCard = null; dropletJobs = 0;
     for (const id of destroyTimers) clearTimeout(id);
     destroyTimers.clear();
     for (const job of jobs) { job.player.dispose(); job.canvas.remove(); }

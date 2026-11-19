@@ -82,7 +82,7 @@ const GameUI = (() => {
   function busy() { return Date.now() / 1000 < Math.max(game.busy_until, game.battle_starts_at); }
   function canAct() { return game.current_player === me && !busy() && !game.resolving && !myself().eliminated && game.phase !== "finished"; }
   function capable(ship, kind) {
-    return !ship.destroyed && (kind === "attack"
+    return !ship.destroyed && !ship.phased && (kind === "attack"
       ? ship.missile || (["attack", "mothership"].includes(ship.role) && ship.ammo > 0)
       : ship.probe || (["scout", "mothership"].includes(ship.role) && myself().energy >= 2));
   }
@@ -92,13 +92,13 @@ const GameUI = (() => {
   }
   function tacticKind() { return mode.includes("attack") ? "attack" : "scan"; }
   function selectShip(crew, ship) {
-    if (!canAct() || ship.destroyed || game.phase !== "battle") return;
+    if (!canAct() || ship.destroyed || ship.phased || game.phase !== "battle") return;
     if (mode.endsWith("-source")) {
       if (crew.id !== me || !capable(ship, tacticKind())) return;
       selected = ship.number; mode = tacticKind() + "-target"; draw(); return;
     }
     if (mode.endsWith("-target")) {
-      if (crew.id === me || !inRange(ship)) return;
+      if (crew.id === me || ship.phased || !inRange(ship)) return;
       target = {owner: crew.id, number: ship.number};
       mode = "confirm-" + tacticKind(); draw(); return;
     }
@@ -149,7 +149,7 @@ const GameUI = (() => {
   const ringCenter = (ring) => (radii[ring][0] + radii[ring][1]) / 2;
   function locationOf(ship) { return point(ship.column, ringCenter(ship.ring)); }
   function occupied(column, ring) {
-    return game.crews.some((crew) => crew.ships.some((ship) => ship.column === column && ship.ring === ring));
+    return (game.world?.droplet?.column === column && game.world?.droplet?.ring === ring) || game.crews.some((crew) => crew.ships.some((ship) => ship.column === column && ship.ring === ring));
   }
   function chooseCell(column, ring) {
     if (!canAct()) return;
@@ -273,6 +273,7 @@ const GameUI = (() => {
       });
       map.append(marker);
     }
+    drawWorld(map);
     const occupancy = {};
     for (const crew of game.crews) for (const ship of crew.ships) {
       if (!ship.ring || ship.destroyed) continue;
@@ -289,8 +290,9 @@ const GameUI = (() => {
       const token = svg("g", {transform: `translate(${pos.x + offsetX},${pos.y + offsetY})`, class: "board-ship" + (selected === ship.number && crew.id === me ? " selected-ship" : ""), role: "button", tabindex: game.phase === "battle" ? "0" : "-1", "data-gear": ship.gear,
         "data-owner": crew.id, "data-number": ship.number,
         "aria-label": `${crew.name} ${ship.number}号舰船 ${ship.column}${ship.ring} ${ship.gear}档`});
+      if (ship.phased) token.classList.add("phased-ship");
       if (mode.endsWith("-source") && (crew.id !== me || !capable(ship, tacticKind()))) token.classList.add("tactical-muted");
-      if (mode.endsWith("-target") && (crew.id === me || !inRange(ship))) token.classList.add("tactical-muted");
+      if (mode.endsWith("-target") && (crew.id === me || ship.phased || !inRange(ship))) token.classList.add("tactical-muted");
       if (mode === "confirm-attack" && target?.owner === crew.id && target.number === ship.number) {
         token.append(svg("circle", {r: 70, class: "attack-target-ring"}));
       }
@@ -635,8 +637,104 @@ const GameUI = (() => {
     } else card.append(el("p", "hint", "你的舰种已秘密锁定。其他玩家不会收到你的舰种配置。"));
     overlay.append(card); return overlay;
   }
+
+  const deckPositions = {nebula: {x: 580, y: 767}, droplet: {x: 1045, y: 767}};
+  function drawWorld(map) {
+    const world = game.world;
+    if (!world) return;
+    const layer = svg("g", {class: "world-assets", "pointer-events": "none"});
+    function icon(cell, name, width, height, rotation = 0) {
+      const pos = locationOf(cell);
+      layer.append(svg("image", {href: `/static/assets/${name}.png`, x: -width / 2, y: -height / 2,
+        width, height, transform: `translate(${pos.x},${pos.y}) rotate(${rotation})`, class: "world-icon " + name}));
+    }
+    for (const cell of world.nebulae) icon(cell, "nebula", 123, 86, (cell.column - .5) * 15);
+    for (const cell of world.fragments) icon(cell, "fragment", 96, 109);
+    for (const cell of world.trails) icon(cell, "trail", 86, 86);
+    for (const cell of world.black_domains) icon(cell, "black-domain", 86, 86);
+    if (world.droplet) {
+      const d = world.droplet;
+      // The round end is the head; the source image's head points down.
+      icon(d, "droplet", 69, 140, (d.column - .5) * 15 + (d.direction === 1 ? -90 : 90));
+    }
+    for (const [deck, pos] of Object.entries(deckPositions)) {
+      const stack = svg("g", {class: "card-stack " + deck, transform: `translate(${pos.x},${pos.y})`});
+      for (let i = 4; i > 0; i--) stack.append(svg("rect", {x: -65, y: -87 + i * 4,
+        width: 130, height: 174, rx: 2, fill: "#0a2230", stroke: "#88adba", "stroke-width": 1.5}));
+      stack.append(svg("image", {href: `/static/assets/${deck}-back.png`, x: -65, y: -87, width: 130, height: 174}));
+      layer.append(stack);
+    }
+    map.append(layer);
+  }
+  function worldEventOverlay(p) {
+    if (!p || !["event_card", "world_coordinate", "fragment_check", "droplet_roll"].includes(p.type)) return null;
+    const personal = p.type === "fragment_check" || (p.type === "world_coordinate" && p.purpose === "teleport");
+    if (personal && p.owner !== me) return null;
+    const overlay = el("div", "event-overlay world-event " + p.type);
+    overlay.dataset.eventId = p.id;
+    if (p.type === "event_card") {
+      overlay.classList.add("card-event-overlay");
+      const pos = deckPositions[p.deck];
+      const boardRect = root().querySelector(".board-canvas");
+      // Percentage origins survive resizing and match the two physical card bays.
+      overlay.style.setProperty("--deck-x", pos.x / 1625 * 100 + "%");
+      overlay.style.setProperty("--deck-y", pos.y / 1536 * 100 + "%");
+      const age = Math.max(0, Date.now() / 1000 - p.started_at);
+      const revealed = age >= .6;
+      const source = el("img", "exposed-deck");
+      source.src = `/static/assets/${p.deck}-back.png`; source.alt = "背面向上的牌堆";
+      const flying = el("div", "drawn-card");
+      flying.style.animationDelay = `-${age}s`;
+      const flip = el("div", "card-flip");
+      flip.style.animationDelay = `-${age}s`;
+      for (const [name, cls] of [[p.deck + "-back", "card-back"], [p.card, "card-face"]]) {
+        const img = el("img", cls); img.src = `/static/assets/${name}.png`; img.alt = cls === "card-face" ? p.label : "卡牌背面"; flip.append(img);
+      }
+      flying.append(flip); overlay.append(source, flying);
+      const caption = el("p", "card-caption", `${p.deck === "nebula" ? "星云" : "水滴"}事件 · ${revealed ? p.label : "抽取卡牌"}`);
+      overlay.append(caption);
+      return overlay;
+    }
+    const panel = el("div", "event-card world-panel");
+    const title = p.type === "fragment_check" ? "四维空间留存判定" : p.type === "droplet_roll" ? "水滴的回合"
+      : p.purpose === "fragments" ? "四维空间碎块将出现在" : p.purpose === "teleport" ? "舰船将被传送至：" : "水滴将出现在";
+    panel.append(el("h3", "", title));
+    const dice = el("div", "world-dice");
+    const rolling = p.stage === "roll" && Date.now() / 1000 >= p.started_at + 2;
+    function die(sides, value, sub) {
+      const item = el("div", "world-die");
+      const shape = el("div", "die d" + sides + (rolling ? " rolling" : ""), value === undefined ? "?" : String(value));
+      item.append(el("small", "", "D" + sides), shape);
+      if (sub !== undefined) item.append(el("strong", "die-result", String(sub)));
+      dice.append(item);
+    }
+    if (p.type === "world_coordinate") {
+      die(24, p.coordinate?.column, p.coordinate?.column);
+      die(6, p.coordinate?.die6, p.coordinate?.ring.toLowerCase());
+      panel.append(dice);
+      if (["coordinate", "opposite"].includes(p.stage)) {
+        const coord = el("div", "coordinate-merged", p.coordinate.column + p.coordinate.ring.toLowerCase());
+        panel.append(coord);
+      }
+      if (p.opposite) panel.append(el("div", "coordinate-opposite", p.opposite.column + p.opposite.ring.toLowerCase()));
+    } else {
+      die(24, p.roll); panel.append(dice);
+      if (p.type === "fragment_check") {
+        if (p.stage === "result") panel.append(el("p", p.success ? "check-success" : "check-failure", p.success ? "判定成功" : "判定失败"));
+      } else {
+        const choices = ["1–5，前进6格", "6–10，内移，前进6格", "11–15，外移，前进6格", "16–20，调头，前进6格", "21–24，留下黑域，前进12格"];
+        const actions = el("div", "droplet-choices");
+        choices.forEach((label, index) => actions.append(el("div", "droplet-choice" + (p.roll && Math.min(4, Math.floor((p.roll - 1) / 5)) === index ? " active" : ""), label)));
+        panel.append(actions);
+      }
+    }
+    overlay.append(panel); return overlay;
+  }
+
   function eventOverlay() {
     const pending = game.pending;
+    const worldOverlay = worldEventOverlay(pending);
+    if (worldOverlay) return worldOverlay;
     if (mode !== "scan-question" && !pending) return null;
     if (pending?.players && !pending.players.includes(me)) return null;
     const overlay = el("div", "event-overlay");
@@ -683,7 +781,7 @@ const GameUI = (() => {
     root().classList.toggle("match-view", game.phase !== "fleet");
     if (game.phase === "fleet") { fleetSelection(); return; }
     const phaseText = game.phase === "finished" ? "对局结束" : game.phase === "roles" ? "秘密配置舰种" : game.phase === "placement" ? "轮流部署舰船" : "第 " + game.round + " 轮 · " + captain(current()) + "的回合";
-    root().append(header(phaseText, game.phase === "placement" ? "每人每次部署一艘 · 初始0档 · 确认后轮到下一位舰长" : "位置公开 / 舰种隐藏 · 移动与回合原型"));
+    root().append(header(phaseText, game.phase === "placement" ? "每人每次部署一艘 · 初始0档 · 确认后轮到下一位舰长" : "位置公开 / 舰种隐藏 · V3 星云与水滴事件"));
     const layout = el("div", "game-layout");
     layout.inert = game.phase === "roles" || (game.phase === "battle" && Date.now() / 1000 < game.battle_starts_at);
     const field = el("div", "battle-field");
@@ -699,6 +797,7 @@ const GameUI = (() => {
       dock.append(hint);
     }
     const space = el("div", "board-space");
+    space.inert = !!game.pending && !game.pending.type.startsWith("collision_");
     space.append(board());
     field.append(space, dock);
     const event = eventOverlay();
@@ -707,6 +806,15 @@ const GameUI = (() => {
     consoleViewport.append(playerConsole());
     layout.append(field, consoleViewport); root().append(layout);
     fitLayout();
+    if (game.pending?.type === "event_card") {
+      const overlay = field.querySelector(".card-event-overlay");
+      const boardRect = field.querySelector(".board-canvas svg").getBoundingClientRect();
+      const fieldRect = field.getBoundingClientRect();
+      const pos = deckPositions[game.pending.deck];
+      overlay.style.setProperty("--deck-x", boardRect.left - fieldRect.left + pos.x / 1625 * boardRect.width + "px");
+      overlay.style.setProperty("--deck-y", boardRect.top - fieldRect.top + pos.y / 1536 * boardRect.height + "px");
+      overlay.querySelector(".exposed-deck").style.width = 130 / 1625 * boardRect.width + "px";
+    }
     GameMedia.refresh();
     layoutObserver.observe(layout);
     layoutObserver.observe(dock);
@@ -717,7 +825,9 @@ const GameUI = (() => {
     } else if (game.phase === "battle" && Date.now() < toastUntil) root().append(el("div", "turn-toast", "你的回合"));
     const deadlines = [game.busy_until * 1000, game.battle_starts_at * 1000, toastUntil,
       (game.pending?.until || 0) * 1000, ((game.pending?.started_at || 0) + 2) * 1000].filter((deadline) => deadline > Date.now());
-    if (deadlines.length) timer = setTimeout(draw, Math.min(...deadlines) - Date.now() + 30);
+    if (game.pending?.type === "event_card") deadlines.push((game.pending.started_at + .6) * 1000, (game.pending.started_at + 1.2) * 1000);
+    const futureDeadlines = deadlines.filter(d => d > Date.now());
+    if (futureDeadlines.length) timer = setTimeout(draw, Math.min(...futureDeadlines) - Date.now() + 30);
     const logKey = game.logs.length + ":" + game.phase;
     const entries = layout.querySelector(".battle-log-entries");
     entries.scrollTop = !logExpanded || (pendingKey !== logKey && followingLog) ? entries.scrollHeight : previousScroll;

@@ -4,6 +4,7 @@ import secrets
 import time
 
 from . import game as rules
+from . import events
 
 STEP_SECONDS = 0.36
 ITEMS = ("energy", "missile", "probe", "repair")
@@ -16,7 +17,7 @@ def living(game):
 
 def at_cell(game, column, ring):
     return [(owner, ship) for owner, ship in living(game)
-            if ship["column"] == column and ship["ring"] == ring]
+            if ship["column"] == column and ship["ring"] == ring and not ship.get("phased")]
 
 
 def effect(game, kind, owner, ship, **fields):
@@ -65,7 +66,7 @@ def damage(game, participants, amount):
     # Apply the entire batch before checking victory so simultaneous defeats draw.
     for owner, number in participants:
         ship = game["crews"][owner]["ships"][number - 1]
-        if not ship["destroyed"]:
+        if not ship["destroyed"] and not ship.get("phased"):
             ship["damage"] += amount
             effect(game, "hit", owner, ship)
             rules.log(game, owner, "%s号：受击 %s 点" % (number, amount))
@@ -126,6 +127,9 @@ def next_turn(game):
     for _ in game["order"]:
         game["turn_index"] = (game["turn_index"] + 1) % len(game["order"])
         if game["turn_index"] == 0:
+            if game.get("world", {}).get("droplet"):
+                events.start_droplet_turn(game)
+                return
             game["round"] += 1
         actor = game["order"][game["turn_index"]]
         if not game["crews"][actor]["eliminated"]:
@@ -155,7 +159,7 @@ def schedule(game):
                              if not game["crews"][lane["owner"]]["ships"][lane["number"] - 1]["destroyed"]
                              and (lane["remaining"] or lane.get("waiting"))]
         ready = [lane for lane in movement["lanes"] if lane["remaining"] and not lane.get("waiting")]
-        if ready:
+        if ready and (not pending or pending["type"].startswith("collision_")):
             movement["step_at"] = max(movement["step_at"], now + .001)
             times.append(movement["step_at"])
         if not movement["lanes"]:
@@ -171,40 +175,62 @@ def pump(game):
     if game["phase"] != "battle":
         return
     waiting = []
-    for contact in game["contacts"]:
+    contacts, game["contacts"] = game["contacts"], []
+    for contact in contacts:
         owner, column, ring = contact["owner"], contact["column"], contact["ring"]
-        if contact.get("ready_at", 0) > time.time():
+        pending = game["pending"]
+        if contact.get("ready_at", 0) > time.time() or (pending and not pending["type"].startswith("collision_")):
             waiting.append(contact)
             continue
+        if "numbers" not in contact:
+            contact["numbers"] = ([contact["number"]] if "number" in contact else
+                [s["number"] for o, s in living(game) if o == owner and s["column"] == column and s["ring"] == ring])
+        if pending is None and events.start_fragment(game, contact):
+            continue
+        if not contact.get("droplet_checked"):
+            contact["droplet_checked"] = True
+            d = game.get("world", {}).get("droplet")
+            if d and (d["column"], d["ring"]) == (column, ring):
+                victims = [(owner, number) for number in contact["numbers"]
+                           if not game["crews"][owner]["ships"][number - 1].get("phased")
+                           and (game["crews"][owner]["ships"][number - 1]["column"],
+                                game["crews"][owner]["ships"][number - 1]["ring"]) == (column, ring)]
+                damage(game, victims, 2)
+                if game["phase"] != "battle":
+                    return
         occupants = at_cell(game, column, ring)
         if not any(o == owner for o, _ in occupants):
+            pickup(game, column, ring, owner)
             release_cell(game, column, ring)
             continue
         players = [o for o in game["order"] if any(p == o for p, _ in occupants)]
-        if len(players) > 1:
-            pending = game["pending"]
+        if len(players) > 1 and not contact.get("collision_done"):
             if pending is None:
                 game["pending"] = {
                     "id": secrets.token_hex(8), "type": "collision_choice", "owner": owner,
-                    "column": column, "ring": ring, "players": players,
+                    "column": column, "ring": ring, "players": players, "contact": contact,
                     "participants": [[o, s["number"]] for o, s in occupants],
                 }
-            elif pending.get("column") == column and pending.get("ring") == ring:
-                # Additional current-player ships can arrive while a choice waits.
-                pending["participants"] = [[o, s["number"]] for o, s in occupants]
             else:
                 waiting.append(contact)
             continue
+        if pending and game.get("world"):
+            waiting.append(contact)
+            continue
+        if events.tiles(game, contact):
+            continue
         pickup(game, column, ring, owner)
         release_cell(game, column, ring)
-    game["contacts"] = waiting
+    game["contacts"] = waiting + game["contacts"]
     schedule(game)
 
 
 def advance(game):
-    if game["phase"] != "battle" or not game["due_at"] or time.time() < game["due_at"]:
+    if not game["due_at"] or time.time() < game["due_at"]:
         return
     game["due_at"] = 0
+    if events.advance(game):
+        return
     pending = game["pending"]
     if pending and pending.get("until", float("inf")) <= time.time():
         if pending["type"] == "collision_roll":
@@ -219,8 +245,12 @@ def advance(game):
                 if pending["success"]:
                     damage(game, pending["participants"], 2)
                 rules.log(game, pending["owner"], "碰撞成功" if pending["success"] else "碰撞失败", "event")
-                pickup(game, pending["column"], pending["ring"], pending["owner"])
-                release_cell(game, pending["column"], pending["ring"])
+                if game["phase"] == "battle":
+                    pending["contact"]["collision_done"] = True
+                    for contact in game["contacts"]:
+                        if (contact["column"], contact["ring"]) == (pending["column"], pending["ring"]):
+                            contact["collision_done"] = True
+                    game["contacts"].insert(0, pending["contact"])
             game["pending"] = None
     if game["phase"] != "battle":
         return
@@ -230,10 +260,10 @@ def advance(game):
     # Resolve arrivals before moving further. A blocked ship does not freeze its fleet.
     pump(game)
     movement = game["movement"]
-    if movement and movement["step_at"] <= time.time() + .001:
+    if movement and movement["step_at"] <= time.time() + .001 and (not game["pending"] or game["pending"]["type"].startswith("collision_")):
         for lane in movement["lanes"]:
             ship = game["crews"][lane["owner"]]["ships"][lane["number"] - 1]
-            if ship["destroyed"] or not lane["remaining"] or lane.get("waiting"):
+            if ship["destroyed"] or ship.get("phased") or not lane["remaining"] or lane.get("waiting"):
                 continue
             old = ship["column"]
             ship["column"] = (old - 1 + ship["direction"]) % 24 + 1
@@ -243,7 +273,7 @@ def advance(game):
             rules.log(game, lane["owner"], "%s号：%s移动 %s%s → %s%s" % (
                 ship["number"], "被动" if movement["passive"] else "主动",
                 old, ship["ring"], ship["column"], ship["ring"]), "passive" if movement["passive"] else "action")
-            contact = {"owner": lane["owner"], "column": ship["column"], "ring": ship["ring"], "ready_at": time.time() + STEP_SECONDS}
+            contact = {"owner": lane["owner"], "column": ship["column"], "ring": ship["ring"], "number": ship["number"], "entered": True, "ready_at": time.time() + STEP_SECONDS}
             if contact not in game["contacts"]:
                 game["contacts"].append(contact)
         movement["step_at"] = time.time() + STEP_SECONDS
@@ -257,9 +287,12 @@ def collision_choice(game, owner, message):
     collide = message.get("collide")
     rules.require(type(collide) is bool, "请选择是否碰撞。")
     if not collide:
-        pickup(game, pending["column"], pending["ring"], owner)
+        pending["contact"]["collision_done"] = True
+        for contact in game["contacts"]:
+            if (contact["column"], contact["ring"]) == (pending["column"], pending["ring"]):
+                contact["collision_done"] = True
+        game["contacts"].insert(0, pending["contact"])
         game["pending"] = None
-        release_cell(game, pending["column"], pending["ring"])
         rules.log(game, owner, "选择不碰撞。", "event")
         pump(game)
         return
@@ -286,6 +319,7 @@ def tactic(game, owner, ship, message):
     target_owner = message.get("target_owner")
     rules.require(isinstance(target_owner, str) and target_owner in game["crews"] and target_owner != owner, "请选择敌方舰船。")
     target = rules.ship_for(game["crews"][target_owner], message.get("target_ship"))
+    rules.require(not ship.get("phased") and not target.get("phased"), "四维留存中的舰船无法行动，也不能成为目标。")
     distance = abs(target["column"] - ship["column"])
     rules.require(min(distance, 24 - distance) <= 2, "目标不在前后两列的作用范围内。")
     question = message.get("question")
@@ -316,7 +350,7 @@ def tactic(game, owner, ship, message):
 
 
 def public_pending(game):
-    pending = copy.deepcopy(game["pending"])
+    pending = events.public_pending(game)
     if pending and pending["type"] == "scan_effect":
         pending.pop("text", None)
     return pending

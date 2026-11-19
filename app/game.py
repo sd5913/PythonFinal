@@ -1,6 +1,6 @@
 """Authoritative first playable: fleet selection, secret roles and movement turns."""
 import time
-from . import combat
+from . import combat, events
 
 FLEETS = {
     "blue": {"name": "蓝色空间舰队", "color": "#64b5ff"},
@@ -69,7 +69,7 @@ def public_state(room, viewer):
         ships = []
         for ship in crew["ships"]:
             data = {key: ship[key] for key in ("number", "ring", "column", "direction", "gear",
-                                              "damage", "destroyed", "missile", "probe")}
+                                              "damage", "destroyed", "missile", "probe", "phased")}
             data["owner"] = player_id
             if player_id == viewer:
                 data["role"] = ship["role"]
@@ -84,7 +84,7 @@ def public_state(room, viewer):
             "gear_used": game["gear_used"], "shift_used": game["shift_used"],
             "busy_until": game["busy_until"], "battle_starts_at": game["battle_starts_at"],
             "logs": game["logs"], "tactic_used": game["tactic_used"],
-            "pending": combat.public_pending(game), "ground": game["ground"],
+            "pending": combat.public_pending(game), "world": game.get("world"), "ground": game["ground"],
             "effects": game["effects"], "winner": game["winner"],
             "resolving": bool(game["pending"] or game["movement"] or game["due_at"])}
 
@@ -104,6 +104,7 @@ def apply(room, player_id, message):
                      "contacts": [], "effects": [], "effect_id": 0, "winner": None, "due_at": 0,
                      "crews": {p.id: {"name": p.name, "fleet": None, "roles_ready": False,
                                       "energy": 0, "ships": [], "eliminated": False} for p in room.players.values()}}
+        events.initialize(room.game)
         return "舰队选择已开始"
     game = room.game
     require(game is not None and player_id in game["crews"], "当前没有进行中的对局。")
@@ -131,15 +132,17 @@ def apply(room, player_id, message):
                 "请选择攻击舰*2；探测舰*2；母舰*1")
         crew["ships"] = [{"number": i + 1, "role": role, "gear": 0, "ring": None,
                            "column": None, "direction": 1, "damage": 0, "destroyed": False,
-                           "missile": False, "probe": False,
+                           "missile": False, "probe": False, "phased": False,
                            "ammo": int(role in ("attack", "mothership"))} for i, role in enumerate(roles)]
         crew["roles_ready"] = True
         if all(c["roles_ready"] for c in game["crews"].values()):
             game["phase"] = "placement"
+            events.start_spawn(game, "droplet")
         return None
     if action == "place_ship":
         require(game["phase"] == "placement", "当前不在棋盘部署阶段。")
         require(player_id == game["order"][game["turn_index"]], "请等待其他舰长部署。")
+        require(not game["pending"], "请等待水滴生成完成。")
         ship = ship_for(crew, message.get("ship"))
         require(ship["ring"] is None, "该舰船已经部署。")
         ring, column, direction = message.get("ring"), message.get("column"), message.get("direction")
@@ -147,15 +150,17 @@ def apply(room, player_id, message):
         require(not any(s["ring"] == ring and s["column"] == column
                         for fleet in game["crews"].values() for s in fleet["ships"]),
                 "该格已有舰船，请选择空格。")
+        d = game.get("world", {}).get("droplet")
+        require(not d or (d["ring"], d["column"]) != (ring, column), "水滴所在格不可初始部署。")
         ship.update(ring=ring, column=column, direction=direction)
         if all(s["ring"] is not None for c in game["crews"].values() for s in c["ships"]):
             game["phase"] = "battle"
             game["round"] = 1
             game["turn_index"] = 0
-            game["battle_starts_at"] = time.time() + 2
+            game["battle_starts_at"] = 0
             for c in game["crews"].values():
                 c["energy"] = 12
-            begin_turn(game)
+            events.start_spawn(game, "fragments")
         else:
             for offset in range(1, len(game["order"]) + 1):
                 index = (game["turn_index"] + offset) % len(game["order"])
@@ -175,6 +180,7 @@ def apply(room, player_id, message):
         combat.next_turn(game)
         return None
     ship = ship_for(crew, message.get("ship"))
+    require(not ship.get("phased"), "四维留存中的舰船无法行动。")
     if action in ("attack", "scan"):
         combat.tactic(game, player_id, ship, message)
         return None
@@ -203,7 +209,7 @@ def apply(room, player_id, message):
         game["shift_used"] = True
         log(game, player_id, "%s号：从轨道 %s 横移至轨道 %s；消耗 1 能量" % (ship["number"], before, target))
         combat.effect(game, "move", player_id, ship, from_column=ship["column"], from_ring=before)
-        game["contacts"] = [{"owner": player_id, "column": ship["column"], "ring": target}]
+        game["contacts"] = [{"owner": player_id, "column": ship["column"], "ring": target, "number": ship["number"], "entered": True}]
         game["due_at"] = game["busy_until"] = time.time() + combat.STEP_SECONDS
     elif action == "turn_ship":
         require(ship["gear"] == 0, "只有 0 档舰船可以转向。")

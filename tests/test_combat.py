@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 import pytest
+pytestmark = pytest.mark.usefixtures("legacy_world")
 from fastapi.testclient import TestClient
 
 from app import combat, game
