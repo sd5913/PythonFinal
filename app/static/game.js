@@ -61,7 +61,7 @@ const GameUI = (() => {
   function error(message) {
     const modal = document.getElementById("game-alert");
     document.getElementById("game-alert-text").textContent = message;
-    if (!modal.open) modal.showModal();
+    if (!modal.open) modal.show();
   }
   document.getElementById("close-alert").onclick = () => document.getElementById("game-alert").close();
   function reset() {
@@ -834,6 +834,7 @@ const GameUI = (() => {
     pendingKey = logKey;
   }
   function render(state, playerId, send) {
+    I18n.setNames(state.players.map(player=>player.name));
     trackMotions(game, state.game);
     room = state; me = playerId; emit = send; game = state.game;
     if (!game) { reset(); return; }

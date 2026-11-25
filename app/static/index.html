@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PythonFinal · 联机大厅</title>
 <link rel="stylesheet" href="/static/style.css?v=2"><link rel="stylesheet" href="/static/game.css?v=6">
+<link rel="stylesheet" href="/static/reference.css?v=1"><script src="/static/i18n.js?v=1" defer></script><script src="/static/reference.js?v=1" defer></script>
 <script src="/visual-effects/renderer.js?v=2" defer></script><script src="/visual-effects/effects.js" defer></script>
-<script src="/static/media.js?v=3" defer></script><script src="/static/game.js?v=6" defer></script><script src="/static/app.js?v=4" defer></script>
+<script src="/static/media.js?v=3" defer></script><script src="/static/game.js?v=7" defer></script><script src="/static/app.js?v=5" defer></script>
 </head>
 <body><main>
 <nav class="topbar" aria-label="游戏信息"><div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 36 12v16L20 37 4 28V12Z"/><path d="m20 10 9 17-9-4-9 4Z"/></svg><div>DARK CAMPAIGN<small>深空乱斗 · 指挥终端</small></div></div><div class="network-tag"><span class="status-dot"></span>LAN<span class="tag-detail"> / 局域网联机</span></div></nav>
@@ -39,7 +40,11 @@
 <p id="readiness" class="hint"></p><div class="log-panel"><div class="section-heading"><h3>通信记录</h3><span class="eyebrow">TRANSMISSION LOG</span></div><ol id="events" aria-live="polite"></ol></div>
 </section>
 <section id="game-view" hidden aria-label="对局界面"></section>
-<button id="settings-button" class="settings-button secondary" aria-label="设置" title="设置">⚙</button>
+<div class="utility-toolbar" aria-label="界面工具">
+<button id="language-button" class="utility-button secondary" title="Switch language" aria-label="Switch language" data-i18n-ignore>中</button>
+<button id="rulebook-button" class="utility-button secondary" title="ruler book" aria-label="ruler book" aria-expanded="false" aria-controls="rulebook-viewer" data-i18n-ignore><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5C9 3 5 3 2 4v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1Zm0 0v15"/></svg></button>
+<button id="settings-button" class="settings-button secondary" aria-label="设置" title="设置">⚙</button></div>
+<section id="rulebook-viewer" class="rulebook-viewer" role="dialog" aria-modal="true" aria-label="规则书" hidden><header><h2>规则书</h2><span id="rulebook-counter" aria-live="polite">1 / 3</span><button id="rulebook-close" class="secondary" aria-label="关闭规则书">×</button></header><div class="rulebook-content"><button id="rulebook-previous" class="rulebook-arrow secondary" aria-label="上一页">‹</button><div class="rulebook-sheet"><img id="rulebook-page" src="/static/rulebook/page-1.png" alt="Rule book — 1 / 3" draggable="false"></div><button id="rulebook-next" class="rulebook-arrow secondary" aria-label="下一页">›</button></div></section>
 <dialog id="settings-dialog"><h2>设置</h2><p>菜单不会暂停其他玩家的操作。</p><button id="continue-game">继续游戏</button><button id="exit-game" class="secondary">退出游戏 · 全员返回备战大厅</button><button id="exit-room" class="secondary">离开房间</button></dialog>
 <dialog id="game-alert"><p id="game-alert-text"></p><button id="close-alert">确定</button></dialog>
 <footer><span>◈ DARK CAMPAIGN <span class="footer-version">/ V3 星云与水滴</span></span><span>关闭、刷新或返回大厅将退出房间</span></footer>

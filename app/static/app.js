@@ -42,6 +42,7 @@ function leaveRoom(message, navigateBack = false) {
   roomHistoryActive = false;
 }
 function render(state) {
+  I18n.setNames(state.players.map(player=>player.name));
   latest = state; $("players").replaceChildren();
   document.body.classList.toggle("playing", Boolean(state.game));
   $("lobby").hidden = Boolean(state.game);
@@ -58,7 +59,7 @@ function render(state) {
     const name = document.createElement("strong"), status = document.createElement("span");
     status.className = "player-status";
     if (player) {
-      name.textContent = player.name + (player.id === session.player_id ? "（你）" : "") + (player.host ? " · 房主" : "");
+      const literalName = document.createElement("span"); literalName.dataset.i18nIgnore = ""; literalName.textContent = player.name; name.append(literalName, document.createTextNode((player.id === session.player_id ? "（你）" : "") + (player.host ? " · 房主" : "")));
       status.textContent = !player.connected ? "正在接入" : player.ready ? "已连接 · 已准备" : "已连接 · 等待准备";
       card.classList.toggle("is-ready", player.connected && player.ready);
       card.classList.toggle("is-self", player.id === session.player_id);
@@ -132,7 +133,7 @@ $("start-game").onclick = () => send({type: "start_game"});
 $("settings-button").onclick = () => {
   $("exit-game").disabled = !latest || !latest.game;
   $("exit-room").disabled = !session;
-  $("settings-dialog").showModal();
+  $("settings-dialog").show();
 };
 $("continue-game").onclick = () => $("settings-dialog").close();
 $("exit-game").onclick = () => { $("settings-dialog").close(); send({type: "exit_game"}); };

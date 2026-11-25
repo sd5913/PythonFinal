@@ -1,0 +1,22 @@
+.utility-toolbar { position: fixed; z-index: 3000; top: 12px; right: 12px; display: flex; gap: 8px; }
+.utility-toolbar .utility-button,.utility-toolbar #settings-button { position: static; width: 36px; height: 36px; min-height: 36px; padding: 6px; display: grid; place-items: center; font-size: 18px; line-height: 1; }
+.utility-button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+body:has(.match-view) .utility-toolbar { top: 3px; }
+.topbar .network-tag { margin-right: 140px; }
+.game-heading { padding-right: 140px; }
+.rulebook-viewer { position: fixed; inset: 54px 12px 12px; z-index: 2500; background: #071722f5; border: 1px solid #80bacb; box-shadow: 0 0 0 100vmax #000b; color: #d7f4fa; display: flex; flex-direction: column; padding: 12px; }
+.rulebook-viewer[hidden] { display: none; }
+.rulebook-viewer header { display: flex; gap: 20px; align-items: center; flex: none; padding: 0 8px 8px; }
+.rulebook-viewer h2 { margin: 0; font-size: 20px; }
+#rulebook-counter { margin-left: auto; font-family: monospace; }
+#rulebook-close { min-height: 30px; padding: 2px 12px; font-size: 23px; }
+.rulebook-content { display: flex; gap: 12px; flex: 1; min-height: 0; align-items: center; }
+.rulebook-sheet { flex: 1; height: 100%; min-width: 0; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; }
+#rulebook-page { display: block; max-width: 100%; max-height: 100%; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.rulebook-arrow { flex: none; width: 44px; min-height: 76px; font-size: 44px; padding: 0; }
+.rulebook-arrow:disabled { opacity: .25; }
+#settings-dialog[open],#game-alert[open] { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%,-50%); z-index: 2000; box-shadow: 0 0 0 100vmax #0009; }
+html[lang=en] .match-view .action-indicator { font-size: 16px; }
+html[lang=en] .match-view .summary-role { font-size: 12px; }
+html[lang=en] .match-view .console-label { font-size: 16px; }
+@media(max-width:650px) { .utility-toolbar { gap: 4px; top: 8px; right: 8px; } .utility-toolbar .utility-button,.utility-toolbar #settings-button { width: 30px; height: 30px; min-height: 30px; } .topbar .network-tag { display: none; } .rulebook-viewer { inset: 48px 4px 4px; padding: 6px; } .rulebook-content { gap: 4px; } .rulebook-arrow { width: 25px; min-height: 60px; font-size: 30px; } }
