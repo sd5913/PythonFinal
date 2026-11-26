@@ -1,0 +1,19 @@
+{
+  "name": "pythonfinal-online",
+  "main": "worker.py",
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": ["python_workers", "disable_python_external_sdk"],
+  "assets": { "directory": "./app/static", "binding": "ASSETS", "run_worker_first": true },
+  "vars": { "APP_URL": "http://127.0.0.1:8787" },
+  "dev": { "ip": "127.0.0.1", "port": 8787 },
+  "observability": { "enabled": false },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "pythonfinal-online",
+    "database_id": "00000000-0000-4000-8000-000000000000",
+    "migrations_dir": "migrations"
+  }],
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomObject" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomObject"] }],
+  "triggers": { "crons": ["17 * * * *"] }
+}
