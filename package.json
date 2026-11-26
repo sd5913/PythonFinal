@@ -1,0 +1,11 @@
+{
+  "name": "pythonfinal-worker",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "test:worker": "node scripts/test-worker.mjs"
+  },
+  "devDependencies": { "wrangler": "4.160.0", "ws": "8.21.0" }
+}
