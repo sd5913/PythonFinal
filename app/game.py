@@ -51,7 +51,9 @@ def ship_for(crew, number):
 def log(game, player_id, text, kind="action"):
     if kind in ("action", "passive"):
         text = FLEETS[game["crews"][player_id]["fleet"]]["name"] + text
-    game["logs"].append({"id": len(game["logs"]) + 1, "round": game["round"],
+    logs = game["logs"]
+    next_id = logs[-1]["id"] + 1 if logs else 1
+    logs.append({"id": next_id, "round": game["round"],
                          "player_id": player_id, "text": text, "kind": kind})
 
 

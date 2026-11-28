@@ -828,7 +828,7 @@ const GameUI = (() => {
     if (game.pending?.type === "event_card") deadlines.push((game.pending.started_at + .6) * 1000, (game.pending.started_at + 1.2) * 1000);
     const futureDeadlines = deadlines.filter(d => d > Date.now());
     if (futureDeadlines.length) timer = setTimeout(draw, Math.min(...futureDeadlines) - Date.now() + 30);
-    const logKey = game.logs.length + ":" + game.phase;
+    const logKey = (game.logs.at(-1)?.id || 0) + ":" + game.phase;
     const entries = layout.querySelector(".battle-log-entries");
     entries.scrollTop = !logExpanded || (pendingKey !== logKey && followingLog) ? entries.scrollHeight : previousScroll;
     pendingKey = logKey;

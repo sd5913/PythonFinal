@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>PythonFinal · 联机大厅</title>
-<link rel="stylesheet" href="/static/style.css?v=2"><link rel="stylesheet" href="/static/game.css?v=6">
+<link rel="stylesheet" href="/static/style.css?v=4"><link rel="stylesheet" href="/static/game.css?v=6">
 <link rel="stylesheet" href="/static/reference.css?v=1"><script src="/static/i18n.js?v=1" defer></script><script src="/static/reference.js?v=1" defer></script>
 <script src="/visual-effects/renderer.js?v=2" defer></script><script src="/visual-effects/effects.js" defer></script>
-<script src="/static/media.js?v=3" defer></script><script src="/static/game.js?v=7" defer></script><script src="/static/app.js?v=5" defer></script>
+<script src="/static/media.js?v=3" defer></script><script src="/static/game.js?v=7" defer></script><script src="/static/app.js?v=6" defer></script>
 </head>
 <body><main>
-<nav class="topbar" aria-label="游戏信息"><div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 36 12v16L20 37 4 28V12Z"/><path d="m20 10 9 17-9-4-9 4Z"/></svg><div>DARK CAMPAIGN<small>深空乱斗 · 指挥终端</small></div></div><div class="network-tag"><span class="status-dot"></span>LAN<span class="tag-detail"> / 局域网联机</span></div></nav>
+<nav class="topbar" aria-label="游戏信息"><div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 36 12v16L20 37 4 28V12Z"/><path d="m20 10 9 17-9-4-9 4Z"/></svg><div>DARK CAMPAIGN<small>深空乱斗 · 指挥终端</small></div></div><div class="network-tag"><span class="status-dot"></span><span id="network-label">LAN</span><span id="network-detail" class="tag-detail"> / 局域网联机</span></div></nav>
 <header class="hero">
-<div class="hero-copy"><span class="eyebrow">FLEET ASSEMBLY / 舰队集结</span><h1>深空之中，<br>集结你的<span>舰队。</span></h1><p>建立通信，召集你的队友。<br>从同一片星域出发。</p><div class="hero-meta"><span>01 — 04 名指挥官</span><span>同一 Wi-Fi · 浏览器加入</span></div></div>
+<div class="hero-copy"><span class="eyebrow">FLEET ASSEMBLY / 舰队集结</span><h1>深空之中，<br>集结你的<span>舰队。</span></h1><p>建立通信，召集你的队友。<br>从同一片星域出发。</p><div class="hero-meta"><span>01 — 04 名指挥官</span><span id="network-help">同一 Wi-Fi · 浏览器加入</span></div></div>
 <div class="orbital" aria-hidden="true"><div class="orbit-label">SECTOR MAP <span>24 / A—C</span></div>
 <svg class="radar" viewBox="0 0 400 360" fill="none">
 <defs><radialGradient id="radar-glow"><stop stop-color="#3dc5e5" stop-opacity=".15"/><stop offset="1" stop-color="#3dc5e5" stop-opacity="0"/></radialGradient><linearGradient id="sweep"><stop stop-color="#59dcff" stop-opacity=".18"/><stop offset="1" stop-color="#59dcff" stop-opacity="0"/></linearGradient></defs>
@@ -26,14 +27,23 @@
 </header>
 <div class="notice-bar"><span class="status-dot"></span><p id="notice" role="status" aria-live="polite">通信待命 · 请输入你的指挥官昵称。</p><span class="notice-end">COMMS</span></div>
 <section id="entry" class="panel">
-<div class="identity-row"><div><span class="eyebrow">IDENTIFICATION / 01</span><h2>确认指挥官身份</h2><p>你的昵称将显示在队友的集结列表中。</p></div><div class="identity-input"><label for="name">指挥官昵称</label><input id="name" maxlength="20" placeholder="输入你的呼号" autocomplete="nickname"></div></div>
+<div id="online-account" class="online-account" hidden>
+<p id="account-status"></p><a id="sign-in" class="secondary" href="/api/auth/github">使用 GitHub 登录</a>
+<button id="sign-out" class="secondary" hidden>退出登录</button>
+</div>
+<div id="lan-identity" class="identity-row"><div><span class="eyebrow">IDENTIFICATION / 01</span><h2>确认指挥官身份</h2><p>你的昵称将显示在队友的集结列表中。</p></div><div class="identity-input"><label for="name">指挥官昵称</label><input id="name" maxlength="20" placeholder="输入你的呼号" autocomplete="nickname"></div></div>
 <div class="entry-actions">
-<div class="action-card create-card"><div class="card-heading"><span class="card-number">01</span><span class="eyebrow">CREATE A CHANNEL</span><span class="card-glyph" aria-hidden="true">⌖</span></div><h2>建立集结点</h2><p>开启独立通信频道，等待队友接入。</p><div class="channel-preview" aria-hidden="true"><span>CHANNEL ID</span><span>— — — — — —</span><small>创建后生成专属房间号</small></div><button id="create">创建房间 <span aria-hidden="true">↗</span></button></div>
-<div class="action-card join-card"><div class="card-heading"><span class="card-number">02</span><span class="eyebrow">JOIN YOUR FLEET</span><span class="card-glyph" aria-hidden="true">↳</span></div><h2>接入友方舰队</h2><p>已有队友建立频道？输入房间号会合。</p><div class="join-input"><label for="code">六位房间号</label><input id="code" maxlength="6" placeholder="AB12CD" autocomplete="off" spellcheck="false"></div><button id="join" class="secondary">加入房间 <span aria-hidden="true">→</span></button></div>
-</div></section>
+<div class="action-card create-card"><div class="card-heading"><span class="card-number">01</span><span class="eyebrow">CREATE A CHANNEL</span><span class="card-glyph" aria-hidden="true">⌖</span></div><h2>建立集结点</h2><p id="create-help">开启独立通信频道，等待队友接入。</p><div id="lan-channel-preview" class="channel-preview" aria-hidden="true"><span>CHANNEL ID</span><span>— — — — — —</span><small>创建后生成专属房间号</small></div><button id="create">创建房间 <span aria-hidden="true">↗</span></button></div>
+<div id="lan-join" class="action-card join-card"><div class="card-heading"><span class="card-number">02</span><span class="eyebrow">JOIN YOUR FLEET</span><span class="card-glyph" aria-hidden="true">↳</span></div><h2>接入友方舰队</h2><p>已有队友建立频道？输入房间号会合。</p><div class="join-input"><label for="code">六位房间号</label><input id="code" maxlength="6" placeholder="AB12CD" autocomplete="off" spellcheck="false"></div><button id="join" class="secondary">加入房间 <span aria-hidden="true">→</span></button></div>
+</div>
+<div id="online-invite" class="online-account" hidden>
+<p>有一则房间邀请。加入后，你的 GitHub 用户名会显示给队友。</p>
+<button id="accept-invite">接受邀请</button>
+</div>
+</section>
 <section id="lobby" class="panel" hidden>
-<div class="room-heading"><div><span class="eyebrow">ACTIVE CHANNEL / 房间号</span><h2 id="room-code"></h2></div><button id="leave" class="secondary">离开房间 <span aria-hidden="true">↗</span></button></div>
-<div class="invite-strip"><div><span class="eyebrow">邀请队友接入</span><p class="hint">打开下方地址，再输入房间号。</p></div><p id="address" class="address"></p></div>
+<div class="room-heading"><div><span class="eyebrow">ACTIVE CHANNEL / 房间号</span><h2 id="room-code"></h2></div><div class="room-actions"><button id="share-invite" class="secondary" hidden>分享邀请</button><button id="leave" class="secondary">离开房间 <span aria-hidden="true">↗</span></button></div></div><input id="invite-link" aria-label="房间邀请链接" readonly hidden>
+<div id="lan-invite-strip" class="invite-strip"><div><span class="eyebrow">邀请队友接入</span><p class="hint">打开下方地址，再输入房间号。</p></div><p id="address" class="address"></p></div>
 <div class="section-heading"><h3>舰队席位</h3><span class="eyebrow">CREW MANIFEST / 04</span></div>
 <div id="players" class="players"></div>
 <div class="controls"><button id="ready">准备</button><button id="start-game" hidden>开始游戏</button><button id="signal" class="secondary">发送联机测试信号</button></div>
@@ -47,5 +57,5 @@
 <section id="rulebook-viewer" class="rulebook-viewer" role="dialog" aria-modal="true" aria-label="规则书" hidden><header><h2>规则书</h2><span id="rulebook-counter" aria-live="polite">1 / 3</span><button id="rulebook-close" class="secondary" aria-label="关闭规则书">×</button></header><div class="rulebook-content"><button id="rulebook-previous" class="rulebook-arrow secondary" aria-label="上一页">‹</button><div class="rulebook-sheet"><img id="rulebook-page" src="/static/rulebook/page-1.png" alt="Rule book — 1 / 3" draggable="false"></div><button id="rulebook-next" class="rulebook-arrow secondary" aria-label="下一页">›</button></div></section>
 <dialog id="settings-dialog"><h2>设置</h2><p>菜单不会暂停其他玩家的操作。</p><button id="continue-game">继续游戏</button><button id="exit-game" class="secondary">退出游戏 · 全员返回备战大厅</button><button id="exit-room" class="secondary">离开房间</button></dialog>
 <dialog id="game-alert"><p id="game-alert-text"></p><button id="close-alert">确定</button></dialog>
-<footer><span>◈ DARK CAMPAIGN <span class="footer-version">/ V3 星云与水滴</span></span><span>关闭、刷新或返回大厅将退出房间</span></footer>
+<footer><span>◈ DARK CAMPAIGN <span class="footer-version">/ V3 星云与水滴</span></span><span id="connection-help">关闭、刷新或返回大厅将退出房间</span></footer>
 </main></body></html>

@@ -9,3 +9,11 @@ __pycache__/
 .vscode/
 .tools/
 *.log
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+wrangler.production.json
+
+.worker-assets/
